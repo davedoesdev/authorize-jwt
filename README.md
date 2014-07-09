@@ -150,7 +150,7 @@ _Source: [index.js](/index.js)_
 
   - `{Integer} [jwt_max_token_expiry]` If set then all JSON Web Tokens must expire sooner than `jwt_max_token_expiry` seconds in the future (from the time they're presented). Defaults to `undefined`.
 
-  - `{Boolean} [ANONYMOUS_MODE]` Whether to authorize all JSON Web Tokens without verifying their signatures. Note that tokens must always pass the [basic checks](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key) performed by `node-jsjws`.
+  - `{Boolean} [ANONYMOUS_MODE]` Whether to authorize all JSON Web Tokens without verifying their signatures. Note that tokens must always pass the [basic checks](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key) performed by `node-jsjws`. Defaults to `false`.
 
 
 - `{Function} cb` Function called with the result of creating the authorizer. It will receive the following arguments:
@@ -158,9 +158,9 @@ _Source: [index.js](/index.js)_
 
   - `{Object} err` If an error occurred then details of the error, otherwise `null`.
 
-  - `{AuthorizeJWT} authz` The [`AuthorizeJWT`](#AuthorizeJWT) object. As well as `AuthorizeJWT`'s prototype methods, it has the following property:
+  - `{AuthorizeJWT} authz` The `AuthorizeJWT` object. As well as `AuthorizeJWT`'s prototype methods, it has the following property:
 
-    - `{PubKeyStore} keystore` The [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore) object that the authorizer is using to lookup the public keys of token issuers. For example, you could listen to [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) events so you know that previously verified tokens are invalid.
+    - `{PubKeyStore} keystore` The [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore) object that the authorizer is using to lookup the public keys of token issuers. For example, you could listen to [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) events so you know that previously verified tokens are invalid. Note: If you pass `config.ANONYMOUS_MODE` as `true` then `keystore` will be `undefined`.
 
 <sub>Go: [TOC](#tableofcontents) | [module](#toc_module)</sub>
 
@@ -195,7 +195,7 @@ _Source: [index.js](/index.js)_
 
 The token must pass all the [tests made by node-jsjws](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key) and
 
-- If `config.jwt_audience_uri` was passed to [`module.exports`](#module-exports) then the token's payload must have a matching `aud` property.
+- If `config.jwt_audience_uri` was passed to [`module.exports`](#moduleexportsconfig-cb) then the token's payload must have a matching `aud` property.
 
 - If `config.jwt_max_token_expiry` was passed to `module.exports` then the token must expire sooner than `config.jwt_max_token_expiry` seconds in the future.
 
