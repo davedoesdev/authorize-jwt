@@ -1,0 +1,7 @@
+language: node_js
+node_js:
+  - 0.10
+before_install:
+  - ( cd ..; git clone "https://github.com/davedoesdev/build-couchdb-travis.git"; cd build-couchdb-travis; wget -O - "https://github.com/davedoesdev/build-couchdb-travis/releases/download/$(git tag | tail -n 1)/build-couchdb.tar.gz" | tar -zx; ln -s "$PWD/build-couchdb" "$HOME" )
+  - ls -l --color=always "$HOME/build-couchdb/build/bin"
+script: npm run travis-test
