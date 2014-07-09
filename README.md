@@ -34,6 +34,8 @@ authorize_jwt(
     jwt_max_token_expiry: 60
 }, function (err, authz)
 {
+    assert.ifError(err);
+
     var the_issuer_id, the_rev, change_rev;
 
     function doit()
@@ -55,12 +57,14 @@ authorize_jwt(
         {
             authz.get_authz_data(req, function (err, info, token)
             {
+                assert.ifError(err);
                 assert.equal(info, 'test');
                 assert.equal(token, the_token);
 
                 // authorize the token
                 authz.authorize(token, function (err, payload, uri, rev)
                 {
+                    assert.ifError(err);
                     assert.equal(uri, the_uri);
                     assert.equal(rev, the_rev);
                     assert.equal(payload.foo, 'bar');
@@ -86,6 +90,7 @@ authorize_jwt(
     // add public key to the store
     authz.keystore.add_pub_key(the_uri, pub_key, function (err, issuer_id, rev)
     {
+        assert.ifError(err);
         the_issuer_id = issuer_id;
         the_rev = rev;
         if (change_rev) { doit(); }
