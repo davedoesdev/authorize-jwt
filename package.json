@@ -52,6 +52,6 @@
     "istanbul": "~0.2.13",
     "grunt-exec": "~0.4.5",
     "coveralls": "~2.10.1",
-    "ursa": "~0.8.0"
+    "ursa": "git://github.com/davedoesdev/ursa.git"
   }
 }

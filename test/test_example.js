@@ -39,7 +39,7 @@ authorize_jwt(
         // create and sign a JWT
         var exp = new Date(), the_token, http_server;
         exp.setMinutes(exp.getMinutes() + 1);
-        the_token = new jsjws.JWT().generateJWTByKey({ alg: 'RS256' },
+        the_token = new jsjws.JWT().generateJWTByKey({ alg: 'PS256' },
         {
             iss: the_issuer_id,
             aud: audience,

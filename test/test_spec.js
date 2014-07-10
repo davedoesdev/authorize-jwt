@@ -175,7 +175,7 @@ describe('authorize-jwt ' + db_type, function ()
         // generate token
 
         var token_exp = new Date(),
-            header = { alg: 'RS256' };
+            header = { alg: 'PS256' };
 
         token_exp.setMinutes(token_exp.getMinutes() + 1);
 
@@ -501,7 +501,7 @@ describe('authorize-jwt ' + db_type, function ()
     it('should authorize JWT signed with new private key', function (cb)
     {
         var token_exp = new Date(),
-            header = { alg: 'RS256' };
+            header = { alg: 'PS256' };
 
         token_exp.setMinutes(token_exp.getMinutes() + 1);
 
