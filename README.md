@@ -148,24 +148,19 @@ _Source: [index.js](/index.js)_
 
 **Parameters:**
 
-- `{Object} config` Configures the authorizer. `config` is passed down to [`pub-keystore`](https://github.com/davedoesdev/pub-keystore#moduleexportsconfig-cb) and [`node-jsjws`](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key). The following extra properties are supported:
+- `{Object} config` Configures the authorizer. `config` is passed down to [`pub-keystore`](https://github.com/davedoesdev/pub-keystore#moduleexportsconfig-cb) and [`node-jsjws`](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key). The following extra properties are supported: 
+- `{String} [jwt_audience_uri]` If set then all JSON Web Tokens must have an `aud` property in their payload which exactly equals `jwt_audience_uri`. Defaults to `undefined`.
 
+- `{Integer} [jwt_max_token_expiry]` If set then all JSON Web Tokens must expire sooner than `jwt_max_token_expiry` seconds in the future (from the time they're presented). Defaults to `undefined`.
 
-  - `{String} [jwt_audience_uri]` If set then all JSON Web Tokens must have an `aud` property in their payload which exactly equals `jwt_audience_uri`. Defaults to `undefined`.
+- `{Boolean} [ANONYMOUS_MODE]` Whether to authorize all JSON Web Tokens without verifying their signatures. Note that tokens must always pass the [basic checks](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key) performed by `node-jsjws`. Defaults to `false`.
 
-  - `{Integer} [jwt_max_token_expiry]` If set then all JSON Web Tokens must expire sooner than `jwt_max_token_expiry` seconds in the future (from the time they're presented). Defaults to `undefined`.
+- `{Function} cb` Function called with the result of creating the authorizer. It will receive the following arguments: 
+- `{Object} err` If an error occurred then details of the error, otherwise `null`.
 
-  - `{Boolean} [ANONYMOUS_MODE]` Whether to authorize all JSON Web Tokens without verifying their signatures. Note that tokens must always pass the [basic checks](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key) performed by `node-jsjws`. Defaults to `false`.
+- `{AuthorizeJWT} authz` The `AuthorizeJWT` object. As well as `AuthorizeJWT`'s prototype methods, it has the following property:
 
-
-- `{Function} cb` Function called with the result of creating the authorizer. It will receive the following arguments:
-
-
-  - `{Object} err` If an error occurred then details of the error, otherwise `null`.
-
-  - `{AuthorizeJWT} authz` The `AuthorizeJWT` object. As well as `AuthorizeJWT`'s prototype methods, it has the following property:
-
-    - `{PubKeyStore} keystore` The [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore) object that the authorizer is using to lookup the public keys of token issuers. For example, you could listen to [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) events so you know that previously verified tokens are invalid. Note: If you pass `config.ANONYMOUS_MODE` as `true` then `keystore` will be `undefined`.
+  - `{PubKeyStore} keystore` The [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore) object that the authorizer is using to lookup the public keys of token issuers. For example, you could listen to [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) events so you know that previously verified tokens are invalid. Note: If you pass `config.ANONYMOUS_MODE` as `true` then `keystore` will be `undefined`.
 
 <sub>Go: [TOC](#tableofcontents) | [module](#toc_module)</sub>
 
@@ -179,18 +174,13 @@ _Source: [index.js](/index.js)_
 
 **Parameters:**
 
-- `{http.IncomingMessage} req` [HTTP request object](http://nodejs.org/api/http.html#http_http_incomingmessage) which should contain the token either in the `Authorization` header (Basic Auth) or in the `authz_token` query string parameter.
+- `{http.IncomingMessage} req` [HTTP request object](http://nodejs.org/api/http.html#http_http_incomingmessage) which should contain the token either in the `Authorization` header (Basic Auth) or in the `authz_token` query string parameter. 
+- `{Function} cb` Function called with the token obtained from `req`. The `Authorization` header is used in preference to the query string. `cb` will receive the following arguments: 
+- `{Object} err` If an error occurred then details of the error, otherwise `null`.
 
+- `{String} info` Extra information retrieved from `req` along with the token. This is either the username extracted from the `Authorization` header or the `authz_info` query string parameter.
 
-
-- `{Function} cb` Function called with the token obtained from `req`. The `Authorization` header is used in preference to the query string. `cb` will receive the following arguments:
-
-
-  - `{Object} err` If an error occurred then details of the error, otherwise `null`.
-
-  - `{String} info` Extra information retrieved from `req` along with the token. This is either the username extracted from the `Authorization` header or the `authz_info` query string parameter.
-
-  - `{String} token` The JSON Web Token retrieved from `req`. This is either the password extracted from the `Authorization` header or the `authz_token` query string parameter.
+- `{String} token` The JSON Web Token retrieved from `req`. This is either the password extracted from the `Authorization` header or the `authz_token` query string parameter.
 
 <sub>Go: [TOC](#tableofcontents) | [AuthorizeJWT.prototype](#toc_authorizejwtprototype)</sub>
 
@@ -206,20 +196,15 @@ The token must pass all the [tests made by node-jsjws](https://github.com/davedo
 
 **Parameters:**
 
-- `{String} authz_token` The JWT to authorize. Unless `config.ANONYMOUS_MODE` was passed to `module.exports` then the `iss` property in the token's payload is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb).
+- `{String} authz_token` The JWT to authorize. Unless `config.ANONYMOUS_MODE` was passed to `module.exports` then the `iss` property in the token's payload is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb). 
+- `{Function} cb` Function called with the result of authorizing the token. It will receive the following arguments: 
+- `{Object} err` If authorization fails for some reason (e.g. the token isn't valid) then details of the failure, otherwise `null`.
 
+- `{Object} payload` The token's payload.
 
+- `{String} uri` The permanent URI of the token's issuer. This is different to the issuer ID in the payload's `iss` property (`PubKeyStore` generates a different issuer ID each time a public key is stored, even for the same issuer).
 
-- `{Function} cb` Function called with the result of authorizing the token. It will receive the following arguments:
-
-
-  - `{Object} err` If authorization fails for some reason (e.g. the token isn't valid) then details of the failure, otherwise `null`.
-
-  - `{Object} payload` The token's payload.
-
-  - `{String} uri` The permanent URI of the token's issuer. This is different to the issuer ID in the payload's `iss` property (`PubKeyStore` generates a different issuer ID each time a public key is stored, even for the same issuer).
-
-  - `{String} rev` Revision string for the public key used to verify the token. You can use this to identify tokens that become invalid when a [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) event occurs for the same issuer but with a different revision string.
+- `{String} rev` Revision string for the public key used to verify the token. You can use this to identify tokens that become invalid when a [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) event occurs for the same issuer but with a different revision string.
 
 <sub>Go: [TOC](#tableofcontents) | [AuthorizeJWT.prototype](#toc_authorizejwtprototype)</sub>
 
