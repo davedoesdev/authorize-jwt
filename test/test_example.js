@@ -56,7 +56,7 @@ authorize_jwt(
                 assert.equal(token, the_token);
 
                 // authorize the token
-                authz.authorize(token, function (err, payload, uri, rev)
+                authz.authorize(token, ['PS256'], function (err, payload, uri, rev)
                 {
                     assert.ifError(err);
                     assert.equal(uri, the_uri);

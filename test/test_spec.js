@@ -40,7 +40,12 @@ describe('authorize-jwt ' + db_type, function ()
         token_beyond_max_expiry,
         token_wrong_signer,
         token_no_signer,
-        token;
+        token,
+        alg = 'PS256',
+        allowed_algs = [alg],
+        allowed_algs2 = {};
+
+    allowed_algs2[alg] = true;
 
     before(function (cb)
     {
@@ -175,7 +180,7 @@ describe('authorize-jwt ' + db_type, function ()
         // generate token
 
         var token_exp = new Date(),
-            header = { alg: 'PS256' };
+            header = { alg: alg };
 
         token_exp.setMinutes(token_exp.getMinutes() + 1);
 
@@ -245,7 +250,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should fail to authorize JWT without an issuer', function (cb)
     {
-        authz.authorize(token_no_issuer, function (err)
+        authz.authorize(token_no_issuer, allowed_algs, function (err)
         {
             expr(expect(err).to.exist);
             cb();
@@ -254,7 +259,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should fail to authorize JWT with an unknown issuer', function (cb)
     {
-        authz.authorize(token_unknown_issuer, function (err)
+        authz.authorize(token_unknown_issuer, allowed_algs, function (err)
         {
             expr(expect(err).to.exist);
             cb();
@@ -263,7 +268,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should fail to authorize a JWT without an audience', function (cb)
     {
-        authz.authorize(token_no_audience, function (err)
+        authz.authorize(token_no_audience, allowed_algs, function (err)
         {
             expr(expect(err).to.exist);
             cb();
@@ -272,7 +277,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should fail to authorize a JWT with the wrong audience', function (cb)
     {
-        authz.authorize(token_wrong_audience, function (err)
+        authz.authorize(token_wrong_audience, allowed_algs, function (err)
         {
             expr(expect(err).to.exist);
             cb();
@@ -281,7 +286,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should authorize a JWT without an audience when configured without an audience', function (cb)
     {
-        no_audience_authz.authorize(token_no_audience, function (err)
+        no_audience_authz.authorize(token_no_audience, allowed_algs, function (err)
         {
             expr(expect(err).not.to.exist);
             cb();
@@ -290,7 +295,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should authorize a JWT with an audience when configured without an audience', function (cb)
     {
-        no_audience_authz.authorize(token, function (err)
+        no_audience_authz.authorize(token, allowed_algs, function (err)
         {
             expr(expect(err).not.to.exist);
             cb();
@@ -299,7 +304,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should fail to authorize a JWT with expiry beyond max expiry', function (cb)
     {
-        authz.authorize(token_beyond_max_expiry, function (err)
+        authz.authorize(token_beyond_max_expiry, allowed_algs, function (err)
         {
             expr(expect(err).to.exist);
             cb();
@@ -308,7 +313,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should fail to authorize a JWT signed with the wrong private key', function (cb)
     {
-        authz.authorize(token_wrong_signer, function (err)
+        authz.authorize(token_wrong_signer, allowed_algs, function (err)
         {
             expr(expect(err).to.exist);
             cb();
@@ -317,7 +322,22 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should authorize a valid JWT', function (cb)
     {
-        authz.authorize(token, function (err, payload, uri, rev)
+        authz.authorize(token, allowed_algs, function (err, payload, uri, rev)
+        {
+            if (err) { return cb(err); }
+            expect(uri).to.equal(uri1);
+            expect(rev).to.equal(rev1);
+            expect(payload.foo).to.equal(90);
+            cb();
+        });
+    });
+
+    it('should authorize pre-processed JWT', function (cb)
+    {
+        var jwt = new jsjws.JWT();
+        jwt.processJWS(token);
+
+        authz.authorize(jwt, allowed_algs, function (err, payload, uri, rev)
         {
             if (err) { return cb(err); }
             expect(uri).to.equal(uri1);
@@ -329,7 +349,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should pass on JWT verify options', function (cb)
     {
-        skew_authz.authorize(token, function (err)
+        skew_authz.authorize(token, allowed_algs, function (err)
         {
             expr(expect(err).to.exist);
             cb();
@@ -338,7 +358,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should not allow unsigned tokens when not in anonymous mode', function (cb)
     {
-        authz.authorize(token_no_signer, function (err)
+        authz.authorize(token_no_signer, allowed_algs, function (err)
         {
             expr(expect(err).to.exist);
             cb();
@@ -347,7 +367,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should allow unsigned tokens when in anonymous mode', function (cb)
     {
-        anon_authz.authorize(token_no_signer, function (err, payload, uri, rev)
+        anon_authz.authorize(token_no_signer, allowed_algs, function (err, payload, uri, rev)
         {
             if (err) { return cb(err); }
             expr(expect(uri).not.to.exist);
@@ -359,7 +379,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should allow signed tokens when in anonymous mode', function (cb)
     {
-        anon_authz.authorize(token, function (err, payload, uri, rev)
+        anon_authz.authorize(token, allowed_algs, function (err, payload, uri, rev)
         {
             if (err) { return cb(err); }
             expr(expect(uri).not.to.exist);
@@ -371,7 +391,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should allow tokens without an issuer when in anonymous mode', function (cb)
     {
-        anon_authz.authorize(token_no_issuer, function (err, payload, uri, rev)
+        anon_authz.authorize(token_no_issuer, allowed_algs, function (err, payload, uri, rev)
         {
             if (err) { return cb(err); }
             expr(expect(uri).not.to.exist);
@@ -383,7 +403,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should error when given an empty token', function (cb)
     {
-        authz.authorize('', function (err)
+        authz.authorize('', allowed_algs, function (err)
         {
             expr(expect(err).to.exist);
             cb();
@@ -491,7 +511,7 @@ describe('authorize-jwt ' + db_type, function ()
 
     it('should fail to authorize JWT when public key has been updated', function (cb)
     {
-        authz.authorize(token, function (err)
+        authz.authorize(token, allowed_algs, function (err)
         {
             expr(expect(err).to.exist);
             cb();
@@ -501,18 +521,19 @@ describe('authorize-jwt ' + db_type, function ()
     it('should authorize JWT signed with new private key', function (cb)
     {
         var token_exp = new Date(),
-            header = { alg: 'PS256' };
+            header = { alg: alg },
+            token2;
 
         token_exp.setMinutes(token_exp.getMinutes() + 1);
 
-        token = new jsjws.JWT().generateJWTByKey(header,
+        token2 = new jsjws.JWT().generateJWTByKey(header,
         {
             iss: issuer_id1,
             aud: audience,
             foo: 91
         }, token_exp, priv_key1);
 
-        authz.authorize(token, function (err, payload, uri, rev)
+        authz.authorize(token2, allowed_algs, function (err, payload, uri, rev)
         {
             if (err) { return cb(err); }
             expect(uri).to.equal(uri1);
@@ -528,7 +549,7 @@ describe('authorize-jwt ' + db_type, function ()
         {
             if (err) { return cb(err); }
 
-            authz.authorize(token, function (err)
+            authz.authorize(token, allowed_algs2, function (err)
             {
                 expr(expect(err).to.exist);
                 cb();
