@@ -25,9 +25,8 @@
     "test": "test"
   },
   "keywords": [
-    "stream",
-    "writable",
-    "high-water mark"
+    "authorization",
+    "jwt"
   ],
   "engines": {
     "node": ">= 0.10"
