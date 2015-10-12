@@ -34,8 +34,8 @@
   },
   "dependencies": {
     "basic-auth-parser": "~0.0.2",
-    "jsjws": "~2.0.3",
-    "pub-keystore": "~0.0.12"
+    "jsjws": "~2.1.0",
+    "pub-keystore": "~0.1.0"
   },
   "devDependencies": {
     "grunt": "~0.4.5",
