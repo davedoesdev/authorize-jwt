@@ -1,7 +1,7 @@
 {
   "name": "authorize-jwt",
   "description": "Simple JSON Web Token authorization",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "homepage": "https://github.com/davedoesdev/authorize-jwt",
   "author": {
     "name": "David Halls",
@@ -29,23 +29,23 @@
     "jwt"
   ],
   "engines": {
-    "node": ">= 0.10"
+    "node": ">= 0.12"
   },
   "dependencies": {
     "basic-auth-parser": "~0.0.2",
-    "jsjws": "~2.1.0",
-    "pub-keystore": "~0.1.0"
+    "jsjws": "~2.1.1",
+    "pub-keystore": "~0.1.2"
   },
   "devDependencies": {
-    "grunt": "~0.4.5",
-    "grunt-cli": "~0.1.13",
-    "grunt-jslint": "~1.1.14",
-    "grunt-cafe-mocha": "~0.1.13",
-    "grunt-apidox": "~0.1.7",
-    "chai": "~2.3.0",
-    "istanbul": "~0.3.14",
-    "grunt-exec": "~0.4.6",
-    "coveralls": "~2.11.2",
-    "ursa": "~0.9.1"
+    "grunt": "~1.0.1",
+    "grunt-contrib-jshint": "~1.0.0",
+    "grunt-mocha-test": "~0.12.7",
+    "grunt-apidox": "~0.1.9",
+    "grunt-bg-shell": "~2.3.3",
+    "mocha": "~2.4.5",
+    "chai": "~3.5.0",
+    "istanbul": "~0.4.3",
+    "coveralls": "~2.11.9",
+    "ursa": "~0.9.4"
   }
 }
