@@ -22,12 +22,12 @@
       <div class='fl pad1y space-right2'>
         <span class="strong">100% </span>
         <span class="quiet">Statements</span>
-        <span class='fraction'>63/63</span>
+        <span class='fraction'>65/65</span>
       </div>
       <div class='fl pad1y space-right2'>
         <span class="strong">100% </span>
         <span class="quiet">Branches</span>
-        <span class='fraction'>32/32</span>
+        <span class='fraction'>34/34</span>
       </div>
       <div class='fl pad1y space-right2'>
         <span class="strong">100% </span>
@@ -37,7 +37,7 @@
       <div class='fl pad1y space-right2'>
         <span class="strong">100% </span>
         <span class="quiet">Lines</span>
-        <span class='fraction'>62/62</span>
+        <span class='fraction'>64/64</span>
       </div>
     </div>
   </div>
@@ -394,7 +394,16 @@
 349
 350
 351
-352</td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+352
+353
+354
+355
+356
+357
+358
+359
+360
+361</td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -614,24 +623,33 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1×</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5×</span>
+<span class="cline-any cline-yes">11×</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">11×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5×</span>
+<span class="cline-any cline-yes">5×</span>
+<span class="cline-any cline-yes">5×</span>
 <span class="cline-any cline-yes">5×</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3×</span>
-<span class="cline-any cline-yes">3×</span>
-<span class="cline-any cline-yes">3×</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2×</span>
-<span class="cline-any cline-yes">2×</span>
-<span class="cline-any cline-yes">2×</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">6×</span>
+<span class="cline-any cline-yes">6×</span>
+<span class="cline-any cline-yes">6×</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5×</span>
+<span class="cline-any cline-yes">11×</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -953,17 +971,22 @@ AuthorizeJWT.prototype._validate_token = function (payload, uri, rev, cb)
 };
 &nbsp;
 /**
-Extracts a JSON Web Token from a HTTP request.
+Extracts JSON Web Tokens from a HTTP request.
 &nbsp;
-@param {http.IncomingMessage} req [HTTP request object](http://nodejs.org/api/http.html#http_http_incomingmessage) which should contain the token either in the `Authorization` header (Basic Auth) or in the `authz_token` query string parameter.
+@param {http.IncomingMessage} req [HTTP request object](http://nodejs.org/api/http.html#http_http_incomingmessage) which should contain the tokens either in the `Authorization` header (Basic Auth) or in the `authz_token` query string parameter.
 &nbsp;
-@param {Function} cb Function called with the token obtained from `req`. The `Authorization` header is used in preference to the query string. `cb` will receive the following arguments:
+@param {Function} cb Function called with the tokens obtained from `req`. The `Authorization` header is used in preference to the query string. `cb` will receive the following arguments:
 &nbsp;
   - `{Object} err` If an error occurred then details of the error, otherwise `null`.
 &nbsp;
-  - `{String} info` Extra information retrieved from `req` along with the token. This is either the username extracted from the `Authorization` header or the `authz_info` query string parameter.
+  - `{String} info` Extra information retrieved from `req` along with the tokens. This is either the username extracted from the `Authorization` header or the `authz_info` query string parameter.
 &nbsp;
-  - `{String} token` The JSON Web Token retrieved from `req`. This is either the password extracted from the `Authorization` header or the `authz_token` query string parameter.
+  - `{String|Array} token` The JSON Web Tokens retrieved from `req`. They are obtained from _either_:
+&nbsp;
+    - The password part of the `Authorization` header, split into multiple tokens using comma as a separator.
+    - _Or_ from any `authz_token` query string parameters present. 
+&nbsp;
+    If only one token is retrieved, it will be passed as a string, otherwise an array of the tokens retrieved will be passed. If no tokens are present in `req` then `info` and `token` will be `undefined`.
 */
 AuthorizeJWT.prototype.get_authz_data = function (req, cb)
 {
@@ -973,7 +996,11 @@ AuthorizeJWT.prototype.get_authz_data = function (req, cb)
     {
         parsed_auth = basic_auth_parser(req.headers.authorization);
         authz_info = parsed_auth.username;
-        authz_token = parsed_auth.password;
+        authz_token = parsed_auth.password.split(',');
+        if (authz_token.length === 1)
+        {
+            authz_token = authz_token[0];
+        }
     }
     else
     {
@@ -1102,7 +1129,7 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
 </div><!-- /wrapper -->
 <div class='footer quiet pad2 space-top1 center small'>
   Code coverage
-  generated by <a href="http://istanbul-js.org/" target="_blank">istanbul</a> at Thu Jul 07 2016 08:28:05 GMT+0100 (BST)
+  generated by <a href="http://istanbul-js.org/" target="_blank">istanbul</a> at Wed Aug 03 2016 07:39:53 GMT+0100 (BST)
 </div>
 </div>
 <script src="../prettify.js"></script>

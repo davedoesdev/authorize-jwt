@@ -434,6 +434,30 @@ describe('authorize-jwt ' + db_type, function ()
         });
     });
 
+    it('should extract multiple authorization tokens from HTTP header', function (cb)
+    {
+        var http_server = http.createServer(function (req, res)
+        {
+            authz.get_authz_data(req, function (err, req_info, req_token)
+            {
+                if (err) { return cb(err); }
+                expect(req_info).to.equal('test');
+                expect(req_token).to.eql([token, token_no_issuer]);
+                res.end();
+                http_server.close(cb);
+            });
+        }).listen(6000, '127.0.0.1', function (err)
+        {
+            if (err) { return cb(err); }
+            http.request(
+            {
+                hostname: '127.0.0.1',
+                port: 6000,
+                auth: 'test:' + token + ',' + token_no_issuer
+            }).end();
+        });
+    });
+
     it('should extract authorization data from URL query', function (cb)
     {
         var http_server = http.createServer(function (req, res)
@@ -454,6 +478,53 @@ describe('authorize-jwt ' + db_type, function ()
                 hostname: '127.0.0.1',
                 port: 6000,
                 path: '/?authz_info=test&authz_token=' + token
+            }).end();
+        });
+    });
+
+    it('should extract multiple authorization tokens from URL query', function (cb)
+    {
+        var http_server = http.createServer(function (req, res)
+        {
+            authz.get_authz_data(req, function (err, req_info, req_token)
+            {
+                if (err) { return cb(err); }
+                expect(req_info).to.equal('test');
+                expect(req_token).to.eql([token, token_no_issuer]);
+                res.end();
+                http_server.close(cb);
+            });
+        }).listen(6000, '127.0.0.1', function (err)
+        {
+            if (err) { return cb(err); }
+            http.request(
+            {
+                hostname: '127.0.0.1',
+                port: 6000,
+                path: '/?authz_info=test&authz_token=' + token + '&authz_token=' + token_no_issuer
+            }).end();
+        });
+    });
+
+    it('should pass undefineds when no tokens are present in request', function (cb)
+    {
+        var http_server = http.createServer(function (req, res)
+        {
+            authz.get_authz_data(req, function (err, req_info, req_token)
+            {
+                if (err) { return cb(err); }
+                expect(req_info).to.equal(undefined);
+                expect(req_token).to.equal(undefined);
+                res.end();
+                http_server.close(cb);
+            });
+        }).listen(6000, '127.0.0.1', function (err)
+        {
+            if (err) { return cb(err); }
+            http.request(
+            {
+                hostname: '127.0.0.1',
+                port: 6000,
             }).end();
         });
     });

@@ -206,17 +206,22 @@ AuthorizeJWT.prototype._validate_token = function (payload, uri, rev, cb)
 };
 
 /**
-Extracts a JSON Web Token from a HTTP request.
+Extracts JSON Web Tokens from a HTTP request.
 
-@param {http.IncomingMessage} req [HTTP request object](http://nodejs.org/api/http.html#http_http_incomingmessage) which should contain the token either in the `Authorization` header (Basic Auth) or in the `authz_token` query string parameter.
+@param {http.IncomingMessage} req [HTTP request object](http://nodejs.org/api/http.html#http_http_incomingmessage) which should contain the tokens either in the `Authorization` header (Basic Auth) or in the `authz_token` query string parameter.
 
-@param {Function} cb Function called with the token obtained from `req`. The `Authorization` header is used in preference to the query string. `cb` will receive the following arguments:
+@param {Function} cb Function called with the tokens obtained from `req`. The `Authorization` header is used in preference to the query string. `cb` will receive the following arguments:
 
   - `{Object} err` If an error occurred then details of the error, otherwise `null`.
 
-  - `{String} info` Extra information retrieved from `req` along with the token. This is either the username extracted from the `Authorization` header or the `authz_info` query string parameter.
+  - `{String} info` Extra information retrieved from `req` along with the tokens. This is either the username extracted from the `Authorization` header or the `authz_info` query string parameter.
 
-  - `{String} token` The JSON Web Token retrieved from `req`. This is either the password extracted from the `Authorization` header or the `authz_token` query string parameter.
+  - `{String|Array} token` The JSON Web Tokens retrieved from `req`. They are obtained from _either_:
+
+    - The password part of the `Authorization` header, split into multiple tokens using comma as a separator.
+    - _Or_ from any `authz_token` query string parameters present. 
+
+    If only one token is retrieved, it will be passed as a string, otherwise an array of the tokens retrieved will be passed. If no tokens are present in `req` then `info` and `token` will be `undefined`.
 */
 AuthorizeJWT.prototype.get_authz_data = function (req, cb)
 {
@@ -226,7 +231,11 @@ AuthorizeJWT.prototype.get_authz_data = function (req, cb)
     {
         parsed_auth = basic_auth_parser(req.headers.authorization);
         authz_info = parsed_auth.username;
-        authz_token = parsed_auth.password;
+        authz_token = parsed_auth.password.split(',');
+        if (authz_token.length === 1)
+        {
+            authz_token = authz_token[0];
+        }
     }
     else
     {
