@@ -307,7 +307,7 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
     }
     catch (ex)
     {
-        return cb(ex.message);
+        return cb(ex);
     }
 
     payload = jwt.getParsedPayload();
@@ -351,7 +351,7 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
         }
         catch (ex)
         {
-            return cb(ex.message);
+            return cb(ex);
         }
 
         return ths._validate_token(payload, uri, rev, cb);
