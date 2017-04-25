@@ -29,8 +29,6 @@ authorize_jwt(
 {
     db_type: 'pouchdb',
     db_for_update: true, // we're going to update a public key
-    username: 'admin',
-    password: 'admin',
     jwt_audience_uri: audience,
     jwt_max_token_expiry: 60
 }, function (err, authz)
