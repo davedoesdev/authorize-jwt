@@ -8,7 +8,6 @@
 var http = require('http'),
     child_process = require('child_process'),
     path = require('path'),
-    ursa = require('ursa'),
     pub_keystore = require('pub-keystore'),
     jsjws = require('jsjws'),
     expect = require('chai').expect,
@@ -51,8 +50,8 @@ describe('authorize-jwt ' + db_type, function ()
     {
         // put public key into keystore
 
-        priv_key1 = ursa.generatePrivateKey(2048, 65537);
-        priv_key2 = ursa.generatePrivateKey(2048, 65537);
+        priv_key1 = jsjws.generatePrivateKey(2048, 65537);
+        priv_key2 = jsjws.generatePrivateKey(2048, 65537);
 
         var pub_key1 = priv_key1.toPublicPem('utf8'),
             pub_key2 = priv_key2.toPublicPem('utf8');
@@ -565,7 +564,7 @@ describe('authorize-jwt ' + db_type, function ()
         authz.keystore.on('replicated', replicated);
         skew_authz.keystore.on('replicated', replicated);
 
-        priv_key1 = ursa.generatePrivateKey(2048, 65537);
+        priv_key1 = jsjws.generatePrivateKey(2048, 65537);
 
         ks_for_update.add_pub_key(uri1, priv_key1.toPublicPem('utf8'), function (err, issuer_id, new_rev)
         {
