@@ -14,7 +14,7 @@ var authorize_jwt = require('..'),
     assert = require('assert'),
     jsjws = require('jsjws'),
     priv_key = jsjws.generatePrivateKey(2048, 65537),
-    pub_key = priv_key.toPublicPem('utf8'),
+    pub_key = priv_key.toPublicPem(),
     the_uri = 'mailto:example@davedoesdev.com',
     audience = 'urn:authorize-jwt:example';
 

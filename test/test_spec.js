@@ -53,8 +53,8 @@ describe('authorize-jwt ' + db_type, function ()
         priv_key1 = jsjws.generatePrivateKey(2048, 65537);
         priv_key2 = jsjws.generatePrivateKey(2048, 65537);
 
-        var pub_key1 = priv_key1.toPublicPem('utf8'),
-            pub_key2 = priv_key2.toPublicPem('utf8');
+        var pub_key1 = priv_key1.toPublicPem(),
+            pub_key2 = priv_key2.toPublicPem();
 
         pub_keystore(
         {
@@ -566,7 +566,7 @@ describe('authorize-jwt ' + db_type, function ()
 
         priv_key1 = jsjws.generatePrivateKey(2048, 65537);
 
-        ks_for_update.add_pub_key(uri1, priv_key1.toPublicPem('utf8'), function (err, issuer_id, new_rev)
+        ks_for_update.add_pub_key(uri1, priv_key1.toPublicPem(), function (err, issuer_id, new_rev)
         {
             if (err) { return cb(err); }
             expect(issuer_id).not.to.equal(issuer_id1);
