@@ -7,7 +7,7 @@ describe('example in README', function ()
 {
     it('should pass', function (cb)
     {
-        this.timeout(10000);
+        this.timeout(60000);
 
 var authorize_jwt = require('..'),
     http = require('http'),

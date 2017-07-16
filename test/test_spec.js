@@ -635,7 +635,7 @@ var couchdb_process;
 // run couchdb with local config so we can add SSL support with a known cert
 before(function (cb)
 {
-    this.timeout(10000);
+    this.timeout(60000);
 
     couchdb_process = child_process.spawn(
             path.join(__dirname, '..', 'node_modules', 'pub-keystore', 'couchdb', 'run_couchdb.sh'),
