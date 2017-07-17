@@ -1,7 +1,7 @@
 {
   "name": "authorize-jwt",
   "description": "Simple JSON Web Token authorization",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "homepage": "https://github.com/davedoesdev/authorize-jwt",
   "author": {
     "name": "David Halls",
@@ -45,7 +45,6 @@
     "mocha": "~3.4.2",
     "chai": "~4.1.0",
     "nyc": "~11.0.3",
-    "coveralls": "~2.13.1",
-    "keypair": "~1.0.1"
+    "coveralls": "~2.13.1"
   }
 }
