@@ -18,8 +18,8 @@
   "license": "MIT",
   "main": "index.js",
   "scripts": {
-    "test": "grunt lint test",
-    "travis-test": "grunt lint coverage coveralls"
+    "test": "node --napi-modules ./node_modules/.bin/grunt lint test",
+    "travis-test": "node --napi-modules ./node_modules/.bin/grunt lint coverage coveralls"
   },
   "directories": {
     "test": "test"
@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "basic-auth-parser": "~0.0.2",
-    "jsjws": "~3.0.2",
+    "jsjws": "~3.1.1",
     "pub-keystore": "~1.0.1"
   },
   "devDependencies": {
