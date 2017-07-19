@@ -19,7 +19,7 @@
   "main": "index.js",
   "scripts": {
     "test": "node --napi-modules ./node_modules/.bin/grunt lint test",
-    "travis-test": "node --napi-modules ./node_modules/.bin/grunt lint test coverage coveralls"
+    "travis-test": "node --napi-modules ./node_modules/.bin/grunt lint coverage coveralls"
   },
   "directories": {
     "test": "test"
