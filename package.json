@@ -1,7 +1,7 @@
 {
   "name": "authorize-jwt",
   "description": "Simple JSON Web Token authorization",
-  "version": "3.1.0",
+  "version": "4.0.0",
   "homepage": "https://github.com/davedoesdev/authorize-jwt",
   "author": {
     "name": "David Halls",
@@ -34,7 +34,7 @@
   "dependencies": {
     "basic-auth-parser": "~0.0.2",
     "jsjws": "~3.1.1",
-    "pub-keystore": "~1.0.1"
+    "pub-keystore": "~2.0.0"
   },
   "devDependencies": {
     "grunt": "~1.0.1",
