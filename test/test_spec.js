@@ -41,10 +41,7 @@ describe('authorize-jwt ' + db_type, function ()
         token_no_signer,
         token,
         alg = 'PS256',
-        allowed_algs = [alg],
-        allowed_algs2 = {};
-
-    allowed_algs2[alg] = true;
+        allowed_algs = [alg];
 
     before(function (cb)
     {
@@ -346,6 +343,20 @@ describe('authorize-jwt ' + db_type, function ()
         });
     });
 
+    it('should fail to authorized invalid pre-processed JWT', function (cb)
+    {
+        var jwt = new jsjws.JWT();
+        jwt.processJWS(token);
+        expr(expect(jwt.parsedJWS.sigvalB64U).to.exist);
+        delete jwt.parsedJWS.sigvalB64U;
+
+        authz.authorize(jwt, allowed_algs, function (err, payload, uri, rev)
+        {
+            expr(expect(err).to.exist);
+            cb();
+        });
+    });
+
     it('should pass on JWT verify options', function (cb)
     {
         skew_authz.authorize(token, allowed_algs, function (err)
@@ -619,7 +630,7 @@ describe('authorize-jwt ' + db_type, function ()
         {
             if (err) { return cb(err); }
 
-            authz.authorize(token, allowed_algs2, function (err)
+            authz.authorize(token, allowed_algs, function (err)
             {
                 expr(expect(err).to.exist);
                 cb();

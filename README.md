@@ -200,7 +200,7 @@ The token must pass all the [tests made by node-jsjws](https://github.com/davedo
 **Parameters:**
 
 - `{String | JWT} authz_token` The JWT to authorize. Unless `config.ANONYMOUS_MODE` was passed to `module.exports` then the `iss` property in the token's payload is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb). If you don't pass the token as a string then it must be a [`node_jsjws.JWT`](https://github.com/davedoesdev/node-jsjws#jwt) object, pre-processed by calling [`processJWS`](https://github.com/davedoesdev/node-jsjws#jwsprototypeprocessjwsjws). 
-- `{Array | Object} allowed_algs` This is passed to [node-jsjws](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key-allowed_algs) and specifies the algorithms expected to be used to sign `authz_token`. If you pass an `Object` then its properties define the set of algorithms expected. 
+- `{Array} allowed_algs` This is passed to [node-jsjws](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key-allowed_algs) and specifies the algorithms expected to be used to sign `authz_token`. 
 - `{Function} cb` Function called with the result of authorizing the token. It will receive the following arguments: 
   - `{Object} err` If authorization fails for some reason (e.g. the token isn't valid) then details of the failure, otherwise `null`.
 

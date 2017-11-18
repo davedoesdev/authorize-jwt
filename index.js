@@ -256,7 +256,7 @@ The token must pass all the [tests made by node-jsjws](https://github.com/davedo
 
 @param {String|JWT} authz_token The JWT to authorize. Unless `config.ANONYMOUS_MODE` was passed to `module.exports` then the `iss` property in the token's payload is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb). If you don't pass the token as a string then it must be a [`node_jsjws.JWT`](https://github.com/davedoesdev/node-jsjws#jwt) object, pre-processed by calling [`processJWS`](https://github.com/davedoesdev/node-jsjws#jwsprototypeprocessjwsjws).
 
-@param {Array|Object} allowed_algs This is passed to [node-jsjws](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key-allowed_algs) and specifies the algorithms expected to be used to sign `authz_token`. If you pass an `Object` then its properties define the set of algorithms expected.
+@param {Array} allowed_algs This is passed to [node-jsjws](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key-allowed_algs) and specifies the algorithms expected to be used to sign `authz_token`.
 
 @param {Function} cb Function called with the result of authorizing the token. It will receive the following arguments:
 
@@ -280,7 +280,7 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
     if (authz_token.parsedJWS)
     {
         jwt = authz_token;
-        authz_token = jwt.parsedJWS.si + '.' + jwt.parsedJWS.sivalB64U;
+        authz_token = jwt.parsedJWS.si + '.' + jwt.parsedJWS.sigvalB64U;
     }
     else
     {
@@ -292,15 +292,7 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
         // Don't verify signature now - we do it below if not in anonymous mode.
         // We have to allow the 'none' alg because we're passing a null key.
         // But we check for 'none' algs in the header explicitly later.
-        if (Array.isArray(allowed_algs))
-        {
-            allowed_algs2 = allowed_algs.concat('none');
-        }
-        else
-        {
-            allowed_algs2 = Object.create(allowed_algs);
-            allowed_algs2.none = true;
-        }
+        allowed_algs2 = allowed_algs.concat('none');
         jwt.verifyJWTByKey(authz_token, this._config, null, allowed_algs2);
     }
     catch (ex)
