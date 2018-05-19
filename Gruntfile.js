@@ -5,8 +5,8 @@ module.exports = function (grunt)
 {
     grunt.initConfig(
     {
-        jshint: {
-            src: [ '*.js', 'test/**/*.js' ]
+        eslint: {
+            target: [ '*.js', 'test/**/*.js', '!test/fixtures/jsrsasign/**' ],
         },
 
         mochaTest: {
@@ -50,12 +50,12 @@ module.exports = function (grunt)
         }
     });
     
-    grunt.loadNpmTasks('grunt-contrib-jshint');
+    grunt.loadNpmTasks('grunt-eslint');
     grunt.loadNpmTasks('grunt-mocha-test');
     grunt.loadNpmTasks('grunt-apidox');
     grunt.loadNpmTasks('grunt-bg-shell');
 
-    grunt.registerTask('lint', 'jshint');
+    grunt.registerTask('lint', 'eslint');
     grunt.registerTask('test', 'mochaTest');
     grunt.registerTask('docs', 'apidox');
     grunt.registerTask('coverage', ['bgShell:cover',
