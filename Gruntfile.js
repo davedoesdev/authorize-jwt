@@ -10,7 +10,7 @@ module.exports = function (grunt)
         },
 
         mochaTest: {
-            src: ['test/*.js'],
+            src: ['test/test_example.js', 'test/test_spec.js'],
             options: {
                 timeout: 10000,
                 bail: true

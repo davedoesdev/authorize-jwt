@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "basic-auth-parser": "~0.0.2",
+    "fido2-lib": "^1.0.4",
     "jsjws": "~5.1.1",
     "pub-keystore": "~2.0.3"
   },
@@ -45,6 +46,11 @@
     "mocha": "~4.1.0",
     "chai": "~4.1.2",
     "nyc": "~11.4.1",
-    "coveralls": "~3.0.0"
+    "coveralls": "~3.0.0",
+    "wdio-mocha-framework": "^0.5.13",
+    "wdio-selenium-standalone-service": "0.0.10",
+    "wdio-spec-reporter": "^0.1.4",
+    "wdio-static-server-service": "^1.0.1",
+    "webdriverio": "^4.12.0"
   }
 }
