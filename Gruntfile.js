@@ -6,7 +6,7 @@ module.exports = function (grunt)
     grunt.initConfig(
     {
         jshint: {
-            src: [ '*.js', 'test/**/*.js' ]
+            src: [ '*.js', 'test/**/*.js', '!test/fixtures/jsrsasign/**' ]
         },
 
         mochaTest: {
