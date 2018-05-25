@@ -188,7 +188,7 @@ module.exports = function (config, cb)
     }
 };
 
-AuthorizeJWT.prototype._validate_token = function (payload, uri, rev, cb)
+AuthorizeJWT.prototype._validate_token = function (payload, uri, rev, assertion_response, cb)
 {
     if (this._config.jwt_audience_uri &&
         (payload.aud !== this._config.jwt_audience_uri))
@@ -206,7 +206,7 @@ AuthorizeJWT.prototype._validate_token = function (payload, uri, rev, cb)
         }
     }
 
-    cb(null, payload, uri, rev);
+    cb(null, payload, uri, rev, assertion_response);
 };
 
 /**
@@ -279,7 +279,7 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
         return cb(new Error('no authorization token'));
     }
 
-    function verify(uri, rev)
+    function verify(uri, rev, assertion_response)
     {
         var jwt, header, payload, issuer_id, allowed_algs2;
 
@@ -325,7 +325,7 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
 
         if (ths._config.ANONYMOUS_MODE || ths._config.WEBAUTHN_MODE)
         {
-            return ths._validate_token(payload, uri, rev, cb);
+            return ths._validate_token(payload, uri, rev, assertion_response, cb);
         }
 
         if (!(payload && payload.iss))
@@ -363,7 +363,7 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
                 return cb(ex);
             }
 
-            ths._validate_token(payload, uri, rev, cb);
+            ths._validate_token(payload, uri, rev, null, cb);
         });
     }
 
@@ -413,7 +413,7 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
 
                     authz_token = Buffer.from(assertion_response.clientData.get('challenge'), 'base64').toString();
 
-                    verify(uri, rev);
+                    verify(uri, rev, assertion_response);
                 })();
             });
         }
@@ -421,6 +421,6 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
         authz_token = Buffer.from(challenge, 'base64').toString();
     }
 
-    verify(null, null);
+    verify(null, null, null);
 };
 

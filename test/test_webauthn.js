@@ -173,13 +173,14 @@ describe('WebAuthn', function ()
         // authorize assertion
         const authorize = promisify((authz_token, allowed_algs, cb) =>
         {
-            authz.authorize(authz_token, allowed_algs, (err, payload, uri, rev) =>
+            authz.authorize(authz_token, allowed_algs, (err, payload, uri, rev, assertion_response) =>
             {
                 cb(err,
                 {
                     paload: payload, 
                     uri: uri,
-                    rev: rev
+                    rev: rev,
+                    assertion_response: assertion_response
                 });
             });
         });
@@ -196,6 +197,8 @@ describe('WebAuthn', function ()
         console.log(info);
 
         // TODO: check info is correct
+
+        // TODO: update docs
 
     });
 });
