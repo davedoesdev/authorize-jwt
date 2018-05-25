@@ -139,12 +139,18 @@ var util = require('util'),
     url = require('url'),
     jsjws = require('jsjws'),
     basic_auth_parser = require('basic-auth-parser'),
-    pub_keystore = require('pub-keystore');
+    pub_keystore = require('pub-keystore'),
+    Fido2Lib = require('fido2-lib').Fido2Lib;
 
 function AuthorizeJWT(config, keystore)
 {
     this._config = config;
     this.keystore = keystore;
+
+    if (config.WEBAUTHN_MODE)
+    {
+        this._fido2lib = new Fido2Lib(config);
+    }
 }
 
 /**
@@ -266,85 +272,155 @@ The token must pass all the [tests made by node-jsjws](https://github.com/davedo
 */
 AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
 {
-    var ths = this, jwt, payload, header, issuer_id, allowed_algs2;
+    var ths = this, challenge;
 
     if (!authz_token)
     {
         return cb(new Error('no authorization token'));
     }
 
-//if webauthn, verify assertion using user handle to get pub key
-//   respect anonymous mode - don't bother verifying just use challenge
-//   when verifying token, only allow 'none' alg
-
-    if (authz_token.parsedJWS)
+    function verify(uri, rev)
     {
-        jwt = authz_token;
-        authz_token = jwt.parsedJWS.si + '.' + jwt.parsedJWS.sigvalB64U;
-    }
-    else
-    {
-        jwt = new jsjws.JWT();
-    }
+        var jwt, header, payload, issuer_id, allowed_algs2;
 
-    try
-    {
-        // Don't verify signature now - we do it below if not in anonymous mode.
-        // We have to allow the 'none' alg because we're passing a null key.
-        // But we check for 'none' algs in the header explicitly later.
-        allowed_algs2 = allowed_algs.concat('none');
-        jwt.verifyJWTByKey(authz_token, this._config, null, allowed_algs2);
-    }
-    catch (ex)
-    {
-        return cb(ex);
-    }
-
-    payload = jwt.getParsedPayload();
-
-    if (this._config.ANONYMOUS_MODE)
-    {
-        return this._validate_token(payload, null, null, cb);
-    }
-
-    if (!(payload && payload.iss))
-    {
-        return cb(new Error('no issuer found in authorization token'));
-    }
-
-    issuer_id = payload.iss;
-
-    header = jwt.getParsedHeader();
-
-    if (header.alg === 'none')
-    {
-        return cb(new Error('anonymous token received but not in anonymous mode'));
-    }
-
-    this.keystore.get_pub_key_by_issuer_id(issuer_id, function (err, pem, uri, rev)
-    {
-        if (err)
+        if (authz_token.parsedJWS)
         {
-            return cb(err);
+            jwt = authz_token;
+            authz_token = jwt.parsedJWS.si + '.' + jwt.parsedJWS.sigvalB64U;
         }
-
-        if (!pem)
+        else
         {
-            return cb(new Error('no public key found for issuer ID ' + issuer_id));
+            jwt = new jsjws.JWT();
         }
-
-        var pub_key = jsjws.createPublicKey(pem, 'utf8');
 
         try
         {
-            jwt.verifyJWTByKey(authz_token, ths._config, pub_key, allowed_algs);
+            // Don't verify signature now - we do it below if not in anonymous
+            // mode. We have to allow the 'none' alg because we're passing a
+            // null key. But we check for 'none' algs in the header explicitly
+            // later.
+            allowed_algs2 = allowed_algs.concat('none');
+            jwt.verifyJWTByKey(authz_token, ths._config, null, allowed_algs2);
         }
         catch (ex)
         {
             return cb(ex);
         }
 
-        return ths._validate_token(payload, uri, rev, cb);
-    });
+        header = jwt.getParsedHeader();
+        payload = jwt.getParsedPayload();
+
+        if (ths._config.WEBAUTHN_MODE)
+        {
+            if (payload && payload.iss)
+            {
+                return cb(new Error('issuer found in webauthn mode'));
+            }
+
+            if (header.alg !== 'none')
+            {
+                return cb(new Error('signed token supplied in webauthn mode'));
+            }
+        }
+
+        if (ths._config.ANONYMOUS_MODE || ths._config.WEBAUTHN_MODE)
+        {
+            return ths._validate_token(payload, uri, rev, cb);
+        }
+
+        if (!(payload && payload.iss))
+        {
+            return cb(new Error('no issuer found in authorization token'));
+        }
+
+        issuer_id = payload.iss;
+
+        if (header.alg === 'none')
+        {
+            return cb(new Error('anonymous token received but not in anonymous mode'));
+        }
+
+        ths.keystore.get_pub_key_by_issuer_id(issuer_id, function (err, pem, uri, rev)
+        {
+            if (err)
+            {
+                return cb(err);
+            }
+
+            if (!pem)
+            {
+                return cb(new Error('no public key found for issuer ID ' + issuer_id));
+            }
+
+            var pub_key = jsjws.createPublicKey(pem, 'utf8');
+
+            try
+            {
+                jwt.verifyJWTByKey(authz_token, ths._config, pub_key, allowed_algs);
+            }
+            catch (ex)
+            {
+                return cb(ex);
+            }
+
+            ths._validate_token(payload, uri, rev, cb);
+        });
+    }
+
+    if (this._config.WEBAUTHN_MODE)
+    {
+        try
+        {
+            challenge = JSON.parse(Buffer.from(authz_token.assertion.response.clientDataJSON)).challenge;
+        }
+        catch (ex)
+        {
+            return cb(ex);
+        }
+
+        if (!this._config.ANONYMOUS_MODE)
+        {
+            return this.keystore.get_pub_key_by_issuer_id(authz_token.issuer_id, function (err, pem, uri, rev)
+            {
+                if (err)
+                {
+                    return cb(err);
+                }
+
+                if (!pem)
+                {
+                    return cb(new Error('no public key found for issuer ID ' + authz_token.issuer_id));
+                }
+
+                (async function ()
+                {
+                    var assertion_response;
+                    
+                    try
+                    {
+                        assertion_response = await ths._fido2lib.getAssertionResponse(
+                            authz_token.assertion,
+                            challenge,
+                            authz_token.expected_origin,
+                            authz_token.expected_factor,
+                            pem,
+                            authz_token.prev_counter);
+                    }
+                    catch (ex)
+                    {
+                        return cb(ex);
+                    }
+
+                    authz_token = Buffer.from(assertion_response.clientData.get('challenge'), 'base64').toString();
+
+                    verify(uri, rev);
+                })();
+            });
+        }
+
+        authz_token = Buffer.from(challenge, 'base64').toString();
+    }
+
+    verify(null, null);
 };
 

@@ -46,6 +46,11 @@ module.exports = function (grunt)
             coveralls: {
                 cmd: 'cat coverage/lcov.info | coveralls',
                 fail: true
+            },
+
+            test_webauthn: {
+                cmd: './node_modules/.bin/wdio',
+                fail: true
             }
         }
     });
@@ -57,6 +62,7 @@ module.exports = function (grunt)
 
     grunt.registerTask('lint', 'eslint');
     grunt.registerTask('test', 'mochaTest');
+    grunt.registerTask('test-webauthn', 'bgShell:test_webauthn');
     grunt.registerTask('docs', 'apidox');
     grunt.registerTask('coverage', ['bgShell:cover',
 								    'bgShell:cover_report',
