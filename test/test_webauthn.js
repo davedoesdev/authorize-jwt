@@ -120,11 +120,11 @@ describe('WebAuthn', function ()
             });
         });
 
-        async function gen_and_verify()
+        async function gen_and_verify(audience, issuer, expire, modify)
         {
             // generate JWT and sign it using WebAuthn (browser)
 
-            const assertion = (await browser.executeAsync(function (audience, cred_id, done)
+            const assertion = (await browser.executeAsync(function (audience, issuer, expire, modify, cred_id, done)
             { (async function () { try {
                 function generateJWT(claims, expires)
                 {
@@ -149,15 +149,14 @@ describe('WebAuthn', function ()
 
                 const payload = {
                     aud: audience,
-                    foo: 90
-                    // TODO: test with wrong aud and iss
+                    foo: 90,
+                    iss: issuer
                 };
-                // TODO: test with optional claims when verifying
 
                 const expires = new Date();
                 expires.setSeconds(expires.getSeconds() + 10);
 
-                const jwt = generateJWT(payload, expires);
+                const jwt = generateJWT(payload, expire ? expires : undefined);
 
                 const assertion = await navigator.credentials.get({ publicKey: {
                     challenge: new TextEncoder('utf-8').encode(jwt),
@@ -175,7 +174,7 @@ describe('WebAuthn', function ()
                         signature: Array.from(new Uint8Array(assertion.response.signature))
                     }
                 });
-            } catch (ex) { done({ error: ex.message }); }})(); }, audience, cred_id)).value;
+            } catch (ex) { done({ error: ex.message }); }})(); }, audience, issuer, expire, modify, cred_id)).value;
 
             if (assertion.error) { throw new Error(assertion.error); }
 
@@ -184,10 +183,21 @@ describe('WebAuthn', function ()
             assertion.id = BufferToArrayBuffer(Buffer.from(assertion.id, 'base64'));
             assertion.response.authenticatorData = BufferToArrayBuffer(Buffer.from(assertion.response.authenticatorData));
             assertion.response.clientDataJSON = BufferToArrayBuffer(Buffer.from(assertion.response.clientDataJSON));
-            assertion.response.signature = BufferToArrayBuffer(Buffer.from(assertion.response.signature));
+
+            const sigbuf = Buffer.from(assertion.response.signature);
+            assertion.response.signature = BufferToArrayBuffer(sigbuf);
 
             // check assertion with fido2lib first (server)
             await fido2lib.getAssertionResponse(assertion, client_jwt, origin, 'either', cred_response.authnrData.get('credentialPublicKeyPem'), 0);
+
+            if (modify)
+            {
+                for (let i = 0; i < sigbuf.length; ++i)
+                {
+                    sigbuf[i] ^= 1;
+                }
+                assertion.response.signature = BufferToArrayBuffer(sigbuf);
+            }
 
             const info = await authorize(
             {
@@ -205,14 +215,49 @@ describe('WebAuthn', function ()
             return info;
         }
 
-        const info = await gen_and_verify();
+        const info = await gen_and_verify(audience, undefined, true, false);
 
         console.log(info);
 
-        // TODO: test fails with bad args / modified data
+        try
+        {
+            await gen_and_verify('foobar', undefined, true, false);
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('unrecognized authorization token audience: foobar');
+        }
+
+        try
+        {
+            await gen_and_verify(audience, 'foobar', true, false);
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('issuer found in webauthn mode');
+        }
+
+        try
+        {
+            await gen_and_verify(audience, undefined, false, false);
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('no expires claim');
+        }
+
+        try
+        {
+            await gen_and_verify(audience, undefined, true, true);
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('signature validation failed');
+        }
+
+        // TODO: coverage
 
         // TODO: update docs
-
 
         // TODO: delete webauthn
 
