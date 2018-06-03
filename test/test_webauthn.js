@@ -4,6 +4,7 @@ const { promisify } = require('util');
 const authorize_jwt = promisify(require('..'));
 const origin = 'https://localhost:4567';
 const audience = 'urn:authorize-jwt:webauthn-test';
+const user_uri = 'tag:localhost,2018-05-22:test';
 
 function BufferToArrayBuffer(buf)
 {
@@ -17,7 +18,8 @@ before(async function ()
     authz = await authorize_jwt({
         db_type: 'pouchdb',
         db_for_update: true,
-        WEBAUTHN_MODE: true
+        WEBAUTHN_MODE: true,
+        jwt_audience_uri: audience
     });
 });
 
@@ -73,7 +75,7 @@ describe('WebAuthn', function ()
                     alg: -7
                 }],
                 timeout: options.timeout,
-                attestation: 'direct' // TODO: can we use none?
+                attestation: 'none' // https://www.w3.org/TR/webauthn/#attestation-conveyance
             }});
             done({
                 id: res.id,
@@ -98,86 +100,19 @@ describe('WebAuthn', function ()
         const add_pub_key = promisify(authz.keystore.add_pub_key.bind(authz.keystore));
 
         const issuer_id = await add_pub_key(
-                'tag:localhost,2018-05-22:test',
+                user_uri,
                 cred_response.authnrData.get('credentialPublicKeyPem'));
-
-        // generate JWT and sign it using WebAuthn (browser)
 
         const cred_id = Buffer.from(cred_response.authnrData.get('credId')).toString('binary');
 
-        const assertion = (await browser.executeAsync(function (audience, cred_id, done)
-        { (async function () { try {
-            function generateJWT(claims, expires)
-            {
-                const header = { alg: 'none', typ: 'JWT' },
-                      new_claims = Object.assign({}, claims),
-                      now = new Date();;
-
-                new_claims.iat = Math.floor(now.getTime() / 1000);
-                new_claims.nbf = Math.floor(now.getTime() / 1000);
-
-                if (expires)
-                {
-                    new_claims.exp = Math.floor(expires.getTime() / 1000);
-                }
-
-                return KJUR.jws.JWS.sign(null, header, new_claims);
-            }
-
-            const random_value = new Uint8Array(64);
-            window.crypto.getRandomValues(random_value);
-
-            const payload = {
-                aud: audience,
-                foo: 90,
-                random_value: random_value // TODO: will this stringify? should use jti
-                // TODO: test with wrong aud and iss
-            };
-            // TODO: test with optional claims when verifying
-
-            const expires = new Date();
-            expires.setSeconds(expires.getSeconds() + 10);
-
-            const jwt = generateJWT(payload, expires);
-
-            const assertion = await navigator.credentials.get({ publicKey: {
-                challenge: new TextEncoder('utf-8').encode(jwt),
-                allowCredentials: [{
-                    id: Uint8Array.from(cred_id, x => x.charCodeAt(0)),
-                    type: 'public-key'
-                }]
-            }});
-
-            done({
-                id: assertion.id,
-                response: {
-                    authenticatorData: Array.from(new Uint8Array(assertion.response.authenticatorData)),
-                    clientDataJSON: new TextDecoder('utf-8').decode(assertion.response.clientDataJSON),
-                    signature: Array.from(new Uint8Array(assertion.response.signature))
-                }
-            });
-        } catch (ex) { done({ error: ex.message }); }})(); }, audience, cred_id)).value;
-
-        if (assertion.error) { throw new Error(assertion.error); }
-
-        // change types for fido2lib
-        const client_jwt = JSON.parse(assertion.response.clientDataJSON).challenge;
-        assertion.id = BufferToArrayBuffer(Buffer.from(assertion.id, 'base64'));
-        assertion.response.authenticatorData = BufferToArrayBuffer(Buffer.from(assertion.response.authenticatorData));
-        assertion.response.clientDataJSON = BufferToArrayBuffer(Buffer.from(assertion.response.clientDataJSON));
-        assertion.response.signature = BufferToArrayBuffer(Buffer.from(assertion.response.signature));
-
-        // check assertion with fido2lib first (server)
-        const assertion_response = await fido2lib.getAssertionResponse(assertion, client_jwt, origin, 'either', cred_response.authnrData.get('credentialPublicKeyPem'), 0);
-
-        // authorize assertion
+        // async function to authorize assertion
         const authorize = promisify((authz_token, allowed_algs, cb) =>
         {
             authz.authorize(authz_token, allowed_algs, (err, payload, uri, rev, assertion_response) =>
             {
                 cb(err,
                 {
-                    paload: payload, 
+                    payload: payload, 
                     uri: uri,
                     rev: rev,
                     assertion_response: assertion_response
@@ -185,20 +120,101 @@ describe('WebAuthn', function ()
             });
         });
 
-        const info = await authorize(
+        async function gen_and_verify()
         {
-            assertion: assertion,
-            issuer_id: issuer_id,
-            expected_origin: origin,
-            expected_factor: 'either',
-            prev_counter: 0
-        }, []);
+            // generate JWT and sign it using WebAuthn (browser)
+
+            const assertion = (await browser.executeAsync(function (audience, cred_id, done)
+            { (async function () { try {
+                function generateJWT(claims, expires)
+                {
+                    const header = { alg: 'none', typ: 'JWT' },
+                          new_claims = Object.assign({}, claims),
+                          now = new Date(),
+                          jti = new Uint8Array(64);
+
+                    window.crypto.getRandomValues(jti);
+
+                    new_claims.jti = Array.from(jti).map(x => String.fromCharCode(x)).join('');
+                    new_claims.iat = Math.floor(now.getTime() / 1000);
+                    new_claims.nbf = Math.floor(now.getTime() / 1000);
+
+                    if (expires)
+                    {
+                        new_claims.exp = Math.floor(expires.getTime() / 1000);
+                    }
+
+                    return KJUR.jws.JWS.sign(null, header, new_claims);
+                }
+
+                const payload = {
+                    aud: audience,
+                    foo: 90
+                    // TODO: test with wrong aud and iss
+                };
+                // TODO: test with optional claims when verifying
+
+                const expires = new Date();
+                expires.setSeconds(expires.getSeconds() + 10);
+
+                const jwt = generateJWT(payload, expires);
+
+                const assertion = await navigator.credentials.get({ publicKey: {
+                    challenge: new TextEncoder('utf-8').encode(jwt),
+                    allowCredentials: [{
+                        id: Uint8Array.from(cred_id, x => x.charCodeAt(0)),
+                        type: 'public-key'
+                    }]
+                }});
+
+                done({
+                    id: assertion.id,
+                    response: {
+                        authenticatorData: Array.from(new Uint8Array(assertion.response.authenticatorData)),
+                        clientDataJSON: new TextDecoder('utf-8').decode(assertion.response.clientDataJSON),
+                        signature: Array.from(new Uint8Array(assertion.response.signature))
+                    }
+                });
+            } catch (ex) { done({ error: ex.message }); }})(); }, audience, cred_id)).value;
+
+            if (assertion.error) { throw new Error(assertion.error); }
+
+            // change types for fido2lib
+            const client_jwt = JSON.parse(assertion.response.clientDataJSON).challenge;
+            assertion.id = BufferToArrayBuffer(Buffer.from(assertion.id, 'base64'));
+            assertion.response.authenticatorData = BufferToArrayBuffer(Buffer.from(assertion.response.authenticatorData));
+            assertion.response.clientDataJSON = BufferToArrayBuffer(Buffer.from(assertion.response.clientDataJSON));
+            assertion.response.signature = BufferToArrayBuffer(Buffer.from(assertion.response.signature));
+
+            // check assertion with fido2lib first (server)
+            await fido2lib.getAssertionResponse(assertion, client_jwt, origin, 'either', cred_response.authnrData.get('credentialPublicKeyPem'), 0);
+
+            const info = await authorize(
+            {
+                assertion: assertion,
+                issuer_id: issuer_id,
+                expected_origin: origin,
+                expected_factor: 'either',
+                prev_counter: 0
+            }, []);
+
+            expect(info.uri).to.equal(user_uri);
+            expect(info.payload.foo).to.equal(90);
+            expect(info.assertion_response.clientData.get('challenge')).to.equal(client_jwt);
+
+            return info;
+        }
+
+        const info = await gen_and_verify();
 
         console.log(info);
 
-        // TODO: check info is correct
+        // TODO: test fails with bad args / modified data
 
         // TODO: update docs
+
+
+        // TODO: delete webauthn
 
     });
 });
