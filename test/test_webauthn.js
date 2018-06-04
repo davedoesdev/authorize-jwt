@@ -57,7 +57,7 @@ describe('WebAuthn', function ()
         expect(challenge_buf.equals(Buffer.from(options2.challenge))).to.be.false;
 
         // allow challenge to be sent to browser
-        options.challenge = challenge_buf.toString('binary');
+        options.challenge = Array.from(challenge_buf);
 
         // create credential (browser)
         const cred = (await browser.executeAsync(function (options, done)
@@ -69,7 +69,7 @@ describe('WebAuthn', function ()
                     displayName: 'Test',
                     id: new TextEncoder('utf-8').encode('test')
                 },
-                challenge: Uint8Array.from(options.challenge, x => x.charCodeAt(0)),
+                challenge: Uint8Array.from(options.challenge),
                 pubKeyCredParams: [{
                     type: 'public-key',
                     alg: -7
@@ -103,7 +103,7 @@ describe('WebAuthn', function ()
                 user_uri,
                 cred_response.authnrData.get('credentialPublicKeyPem'));
 
-        const cred_id = Buffer.from(cred_response.authnrData.get('credId')).toString('binary');
+        const cred_id = Array.from(Buffer.from(cred_response.authnrData.get('credId')));
 
         // async function to authorize assertion
         const authorize = promisify((authz_token, allowed_algs, cb) =>
@@ -120,7 +120,7 @@ describe('WebAuthn', function ()
             });
         });
 
-        async function gen_and_verify(audience, issuer, expire, modify)
+        async function gen_and_verify(audience, issuer, expire, modify, wrong_issuer)
         {
             // generate JWT and sign it using WebAuthn (browser)
 
@@ -161,7 +161,7 @@ describe('WebAuthn', function ()
                 const assertion = await navigator.credentials.get({ publicKey: {
                     challenge: new TextEncoder('utf-8').encode(jwt),
                     allowCredentials: [{
-                        id: Uint8Array.from(cred_id, x => x.charCodeAt(0)),
+                        id: Uint8Array.from(cred_id),
                         type: 'public-key'
                     }]
                 }});
@@ -199,10 +199,11 @@ describe('WebAuthn', function ()
                 assertion.response.signature = BufferToArrayBuffer(sigbuf);
             }
 
+            // authorize assertion and token (challenge) in it (server)
             const info = await authorize(
             {
                 assertion: assertion,
-                issuer_id: issuer_id,
+                issuer_id: wrong_issuer ? 'foobar' : issuer_id,
                 expected_origin: origin,
                 expected_factor: 'either',
                 prev_counter: 0
@@ -215,13 +216,11 @@ describe('WebAuthn', function ()
             return info;
         }
 
-        const info = await gen_and_verify(audience, undefined, true, false);
-
-        console.log(info);
+        await gen_and_verify(audience, undefined, true, false, false);
 
         try
         {
-            await gen_and_verify('foobar', undefined, true, false);
+            await gen_and_verify('foobar', undefined, true, false, false);
         }
         catch (ex)
         {
@@ -230,7 +229,7 @@ describe('WebAuthn', function ()
 
         try
         {
-            await gen_and_verify(audience, 'foobar', true, false);
+            await gen_and_verify(audience, 'foobar', true, false, false);
         }
         catch (ex)
         {
@@ -239,7 +238,7 @@ describe('WebAuthn', function ()
 
         try
         {
-            await gen_and_verify(audience, undefined, false, false);
+            await gen_and_verify(audience, undefined, false, false, false);
         }
         catch (ex)
         {
@@ -248,18 +247,28 @@ describe('WebAuthn', function ()
 
         try
         {
-            await gen_and_verify(audience, undefined, true, true);
+            await gen_and_verify(audience, undefined, true, true, false);
         }
         catch (ex)
         {
             expect(ex.message).to.equal('signature validation failed');
         }
 
+        try
+        {
+            await gen_and_verify(audience, undefined, true, true, true);
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('no public key found for issuer ID foobar');
+        }
+
+
         // TODO: coverage
 
         // TODO: update docs
 
-        // TODO: delete webauthn
+        // TODO: delete authorize-webauthn
 
     });
 });

@@ -26,7 +26,7 @@ module.exports = function (grunt)
 
         bgShell: {
             cover: {
-                cmd: "./node_modules/.bin/nyc -x Gruntfile.js -x 'test/**' node --napi-modules ./node_modules/.bin/grunt test",
+                cmd: "./node_modules/.bin/nyc -x Gruntfile.js -x 'test/**' -x wdio.conf.js node --napi-modules ./node_modules/.bin/grunt test-coverage",
                 fail: true,
                 execOpts: {
                     maxBuffer: 0
@@ -63,6 +63,7 @@ module.exports = function (grunt)
     grunt.registerTask('lint', 'eslint');
     grunt.registerTask('test', 'mochaTest');
     grunt.registerTask('test-webauthn', 'bgShell:test_webauthn');
+    grunt.registerTask('test-coverage', (process.env.CI === 'true' ? [] : ['test-webauthn']).concat(['test']));
     grunt.registerTask('docs', 'apidox');
     grunt.registerTask('coverage', ['bgShell:cover',
 								    'bgShell:cover_report',
