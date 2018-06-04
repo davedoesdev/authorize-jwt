@@ -11,7 +11,7 @@ function BufferToArrayBuffer(buf)
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
-let authz;
+let authz, authz_anon;
 
 before(async function ()
 {
@@ -21,11 +21,12 @@ before(async function ()
         WEBAUTHN_MODE: true,
         jwt_audience_uri: audience
     });
-});
 
-after(function (cb)
-{
-    authz.keystore.close(cb);
+    authz_anon = await authorize_jwt({
+        WEBAUTHN_MODE: true,
+        ANONYMOUS_MODE: true,
+        jwt_audience_uri: audience
+    });
 });
 
 describe('WebAuthn', function ()
@@ -106,7 +107,7 @@ describe('WebAuthn', function ()
         const cred_id = Array.from(Buffer.from(cred_response.authnrData.get('credId')));
 
         // async function to authorize assertion
-        const authorize = promisify((authz_token, allowed_algs, cb) =>
+        const authorize = promisify((authz, authz_token, allowed_algs, cb) =>
         {
             authz.authorize(authz_token, allowed_algs, (err, payload, uri, rev, assertion_response) =>
             {
@@ -120,11 +121,21 @@ describe('WebAuthn', function ()
             });
         });
 
-        async function gen_and_verify(audience, issuer, expire, modify, wrong_issuer)
+        async function gen_and_verify(authz, options)
         {
+            options = Object.assign(
+            {
+                audience: audience,
+                issuer: undefined,
+                expire: true,
+                modify_sig: false,
+                wrong_issuer: false,
+                modify_client_data: false
+            }, options);
+
             // generate JWT and sign it using WebAuthn (browser)
 
-            const assertion = (await browser.executeAsync(function (audience, issuer, expire, modify, cred_id, done)
+            const assertion = (await browser.executeAsync(function (options, cred_id, done)
             { (async function () { try {
                 function generateJWT(claims, expires)
                 {
@@ -148,15 +159,15 @@ describe('WebAuthn', function ()
                 }
 
                 const payload = {
-                    aud: audience,
+                    aud: options.audience,
                     foo: 90,
-                    iss: issuer
+                    iss: options.issuer
                 };
 
                 const expires = new Date();
                 expires.setSeconds(expires.getSeconds() + 10);
 
-                const jwt = generateJWT(payload, expire ? expires : undefined);
+                const jwt = generateJWT(payload, options.expire ? expires : undefined);
 
                 const assertion = await navigator.credentials.get({ publicKey: {
                     challenge: new TextEncoder('utf-8').encode(jwt),
@@ -174,7 +185,7 @@ describe('WebAuthn', function ()
                         signature: Array.from(new Uint8Array(assertion.response.signature))
                     }
                 });
-            } catch (ex) { done({ error: ex.message }); }})(); }, audience, issuer, expire, modify, cred_id)).value;
+            } catch (ex) { done({ error: ex.message }); }})(); }, options, cred_id)).value;
 
             if (assertion.error) { throw new Error(assertion.error); }
 
@@ -190,7 +201,7 @@ describe('WebAuthn', function ()
             // check assertion with fido2lib first (server)
             await fido2lib.getAssertionResponse(assertion, client_jwt, origin, 'either', cred_response.authnrData.get('credentialPublicKeyPem'), 0);
 
-            if (modify)
+            if (options.modify_sig)
             {
                 for (let i = 0; i < sigbuf.length; ++i)
                 {
@@ -199,70 +210,112 @@ describe('WebAuthn', function ()
                 assertion.response.signature = BufferToArrayBuffer(sigbuf);
             }
 
+            if (options.modify_client_data)
+            {
+                assertion.response.clientDataJSON = 'a' + assertion.response.clientDataJSON;
+            }
+
             // authorize assertion and token (challenge) in it (server)
-            const info = await authorize(
+            const info = await authorize(authz,
             {
                 assertion: assertion,
-                issuer_id: wrong_issuer ? 'foobar' : issuer_id,
+                issuer_id: options.wrong_issuer ? 'foobar' : issuer_id,
                 expected_origin: origin,
                 expected_factor: 'either',
                 prev_counter: 0
             }, []);
 
-            expect(info.uri).to.equal(user_uri);
+
+            if (authz === authz_anon)
+            {
+                expect(info.uri).to.equal(null);
+                expect(info.assertion_response).to.equal(null);
+            }
+            else
+            {
+                expect(info.uri).to.equal(user_uri);
+                expect(info.assertion_response.clientData.get('challenge')).to.equal(client_jwt);
+            }
+
             expect(info.payload.foo).to.equal(90);
-            expect(info.assertion_response.clientData.get('challenge')).to.equal(client_jwt);
 
             return info;
         }
 
-        await gen_and_verify(audience, undefined, true, false, false);
+        for (const az of [authz, authz_anon])
+        {
+            await gen_and_verify(az);
+
+            try
+            {
+                await gen_and_verify(az, {audience: 'foobar'});
+            }
+            catch (ex)
+            {
+                expect(ex.message).to.equal('unrecognized authorization token audience: foobar');
+            }
+
+            try
+            {
+                await gen_and_verify(az, {issuer: 'foobar'});
+            }
+            catch (ex)
+            {
+                expect(ex.message).to.equal('issuer found in webauthn mode');
+            }
+
+            try
+            {
+                await gen_and_verify(az, {expire: false});
+            }
+            catch (ex)
+            {
+                expect(ex.message).to.equal('no expires claim');
+            }
+
+            try
+            {
+                await gen_and_verify(az, {modify_sig: true});
+            }
+            catch (ex)
+            {
+                expect(ex.message).to.equal('signature validation failed');
+            }
+
+            try
+            {
+                await gen_and_verify(az, {wrong_issuer: true});
+            }
+            catch (ex)
+            {
+                expect(ex.message).to.equal('no public key found for issuer ID foobar');
+            }
+
+            try
+            {
+                await gen_and_verify(az, {modify_client_data: true});
+            }
+            catch (ex)
+            {
+                expect(ex.message).to.equal('Unexpected token a in JSON at position 0');
+            }
+        }
+
+        const close = promisify(cb =>
+        {
+            authz.keystore.close(cb);
+        });
+
+        await close();
 
         try
         {
-            await gen_and_verify('foobar', undefined, true, false, false);
+            await gen_and_verify(authz);
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('unrecognized authorization token audience: foobar');
+            expect(ex.message).to.equal('not_open');
         }
-
-        try
-        {
-            await gen_and_verify(audience, 'foobar', true, false, false);
-        }
-        catch (ex)
-        {
-            expect(ex.message).to.equal('issuer found in webauthn mode');
-        }
-
-        try
-        {
-            await gen_and_verify(audience, undefined, false, false, false);
-        }
-        catch (ex)
-        {
-            expect(ex.message).to.equal('no expires claim');
-        }
-
-        try
-        {
-            await gen_and_verify(audience, undefined, true, true, false);
-        }
-        catch (ex)
-        {
-            expect(ex.message).to.equal('signature validation failed');
-        }
-
-        try
-        {
-            await gen_and_verify(audience, undefined, true, true, true);
-        }
-        catch (ex)
-        {
-            expect(ex.message).to.equal('no public key found for issuer ID foobar');
-        }
-
 
         // TODO: coverage
 
