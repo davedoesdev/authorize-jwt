@@ -130,7 +130,9 @@ describe('WebAuthn', function ()
                 expire: true,
                 modify_sig: false,
                 wrong_issuer: false,
-                modify_client_data: false
+                modify_client_data: false,
+                sign_jwt: false,
+                allowed_algs: []
             }, options);
 
             // generate JWT and sign it using WebAuthn (browser)
@@ -139,7 +141,10 @@ describe('WebAuthn', function ()
             { (async function () { try {
                 function generateJWT(claims, expires)
                 {
-                    const header = { alg: 'none', typ: 'JWT' },
+                    const header = {
+                              alg: options.sign_jwt ? 'HS256' : 'none',
+                              typ: 'JWT'
+                          },
                           new_claims = Object.assign({}, claims),
                           now = new Date(),
                           jti = new Uint8Array(64);
@@ -155,7 +160,11 @@ describe('WebAuthn', function ()
                         new_claims.exp = Math.floor(expires.getTime() / 1000);
                     }
 
-                    return KJUR.jws.JWS.sign(null, header, new_claims);
+                    return KJUR.jws.JWS.sign(
+                        null,
+                        header,
+                        new_claims,
+                        options.sign_jwt ? 'foobar' : undefined);
                 }
 
                 const payload = {
@@ -223,7 +232,7 @@ describe('WebAuthn', function ()
                 expected_origin: origin,
                 expected_factor: 'either',
                 prev_counter: 0
-            }, []);
+            }, options.allowed_algs);
 
 
             if (authz === authz_anon)
@@ -299,6 +308,24 @@ describe('WebAuthn', function ()
             {
                 expect(ex.message).to.equal('Unexpected token a in JSON at position 0');
             }
+
+            try
+            {
+                await gen_and_verify(az, {sign_jwt: true});
+            }
+            catch (ex)
+            {
+                expect(ex.message).to.equal('algorithm not allowed: HS256');
+            }
+
+            try
+            {
+                await gen_and_verify(az, {sign_jwt: true, allowed_algs: ['HS256']});
+            }
+            catch (ex)
+            {
+                expect(ex.message).to.equal('signed token supplied in webauthn mode');
+            }
         }
 
         const close = promisify(cb =>
@@ -317,11 +344,8 @@ describe('WebAuthn', function ()
             expect(ex.message).to.equal('not_open');
         }
 
-        // TODO: coverage
-
         // TODO: update docs
 
         // TODO: delete authorize-webauthn
-
     });
 });
