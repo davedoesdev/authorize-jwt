@@ -10,7 +10,12 @@ module.exports = function (grunt)
         },
 
         mochaTest: {
-            src: ['test/test_example.js', 'test/test_spec.js'],
+            default: {
+                src: ['test/test_example.js', 'test/test_spec.js']
+            },
+            webauthn: {
+                src: ['test/test_webauthn.js']
+            },
             options: {
                 timeout: 10000,
                 bail: true
@@ -26,7 +31,7 @@ module.exports = function (grunt)
 
         bgShell: {
             cover: {
-                cmd: "./node_modules/.bin/nyc -x Gruntfile.js -x 'test/**' -x wdio.conf.js node --napi-modules ./node_modules/.bin/grunt test-coverage",
+                cmd: "./node_modules/.bin/nyc -x Gruntfile.js -x 'test/**' -x wdio.conf.js node --napi-modules ./node_modules/.bin/grunt test-webauthn test",
                 fail: true,
                 execOpts: {
                     maxBuffer: 0
@@ -61,9 +66,9 @@ module.exports = function (grunt)
     grunt.loadNpmTasks('grunt-bg-shell');
 
     grunt.registerTask('lint', 'eslint');
-    grunt.registerTask('test', 'mochaTest');
-    grunt.registerTask('test-webauthn', 'bgShell:test_webauthn');
-    grunt.registerTask('test-coverage', (process.env.CI === 'true' ? [] : ['test-webauthn']).concat(['test']));
+    grunt.registerTask('test', 'mochaTest:default');
+    grunt.registerTask('test-webauthn', process.env.CI === 'true' ?
+            'mochaTest:webauthn' : 'bgShell:test_webauthn');
     grunt.registerTask('docs', 'apidox');
     grunt.registerTask('coverage', ['bgShell:cover',
 								    'bgShell:cover_report',

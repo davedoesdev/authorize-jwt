@@ -1,7 +1,10 @@
 const { Fido2Lib } = require('fido2-lib');
 const { expect } = require('chai');
 const { promisify } = require('util');
+const path = require('path');
+const fs = require('fs');
 const authorize_jwt = promisify(require('..'));
+const writeFile = promisify(fs.writeFile);
 const origin = 'https://localhost:4567';
 const audience = 'urn:authorize-jwt:webauthn-test';
 const user_uri = 'tag:localhost,2018-05-22:test';
@@ -29,6 +32,54 @@ before(async function ()
     });
 });
 
+let io;
+
+if (process.env.CI === 'true')
+{
+    global.browser = {
+        timeouts()
+        {
+        },
+
+        async url()
+        {
+        }
+    };
+
+    io = JSON.parse(fs.readFileSync(path.join(__dirname, 'io.json')));
+}
+else
+{
+    io = [];
+}
+
+async function executeAsync(f, ...args)
+{
+    if (process.env.CI === 'true')
+    {
+        return JSON.parse(io.shift()).res;
+    }
+
+    const r = (await browser.executeAsync(function (f, ...args)
+    {
+        (async function ()
+        {
+            let done = args[args.length - 1];
+            try
+            {
+                done(await eval(f)(...args.slice(0, -1)));
+            }
+            catch (ex)
+            {
+                done({ error: ex.message }); 
+            }
+        })();
+    }, f.toString(), ...args)).value;
+
+    io.push(JSON.stringify({ req: args, res: r }));
+    return r;
+}
+
 describe('WebAuthn', function ()
 {
     it('should authorize', async function ()
@@ -43,26 +94,31 @@ describe('WebAuthn', function ()
 
         // create challenge (server)
 
-        const options = await fido2lib.createCredentialChallenge();
+        const options = await fido2lib.attestationOptions();
         expect(options.challenge instanceof ArrayBuffer).to.be.true;
         expect(options.challenge.byteLength).to.equal(64);
         expect(options.timeout).to.equal(60000);
 
         // check we're getting different ones
-        const options2 = await fido2lib.createCredentialChallenge();
+        const options2 = await fido2lib.attestationOptions();
         expect(options2.challenge instanceof ArrayBuffer).to.be.true;
         expect(options2.challenge.byteLength).to.equal(64);
         expect(options2.timeout).to.equal(60000);
 
-        const challenge_buf = Buffer.from(options.challenge);
+        let challenge_buf = Buffer.from(options.challenge);
         expect(challenge_buf.equals(Buffer.from(options2.challenge))).to.be.false;
+
+        if (process.env.CI === 'true')
+        {
+            challenge_buf = Buffer.from(JSON.parse(io[0]).req[0].challenge);
+        }
 
         // allow challenge to be sent to browser
         options.challenge = Array.from(challenge_buf);
 
         // create credential (browser)
-        const cred = (await browser.executeAsync(function (options, done)
-        { (async function () { try {
+        const cred = await executeAsync(async options =>
+        {
             const res = await navigator.credentials.create({ publicKey: {
                 rp: { name: 'AuthorizeJWTTest' },
                 user: {
@@ -78,14 +134,14 @@ describe('WebAuthn', function ()
                 timeout: options.timeout,
                 attestation: 'none' // https://www.w3.org/TR/webauthn/#attestation-conveyance
             }});
-            done({
+            return {
                 id: res.id,
                 response: {
                     attestationObject: Array.from(new Uint8Array(res.response.attestationObject)),
                     clientDataJSON: new TextDecoder('utf-8').decode(res.response.clientDataJSON)
                 }
-            });
-        } catch (ex) { done({ error: ex.message }); }})(); }, options)).value;
+            };
+        }, options);
 
         if (cred.error) { throw new Error(cred.error); }
 
@@ -95,8 +151,13 @@ describe('WebAuthn', function ()
         cred.response.clientDataJSON = BufferToArrayBuffer(Buffer.from(cred.response.clientDataJSON));
 
         // verify credential (server)
-        const cred_response = await fido2lib.createCredentialResponse(cred, challenge_buf, origin, 'either');
-
+        const cred_response = await fido2lib.attestationResult(cred,
+        {
+            challenge: challenge_buf,
+            origin: origin,
+            factor: 'either'
+        });
+        
         // add public key (server)
         const add_pub_key = promisify(authz.keystore.add_pub_key.bind(authz.keystore));
 
@@ -132,13 +193,14 @@ describe('WebAuthn', function ()
                 wrong_issuer: false,
                 modify_client_data: false,
                 sign_jwt: false,
-                allowed_algs: []
+                allowed_algs: [],
+                expire_immediately: false
             }, options);
 
             // generate JWT and sign it using WebAuthn (browser)
 
-            const assertion = (await browser.executeAsync(function (options, cred_id, done)
-            { (async function () { try {
+            const assertion = await executeAsync(async (options, cred_id) =>
+            {
                 function generateJWT(claims, expires)
                 {
                     const header = {
@@ -173,10 +235,18 @@ describe('WebAuthn', function ()
                     iss: options.issuer
                 };
 
-                const expires = new Date();
-                expires.setSeconds(expires.getSeconds() + 10);
+                let expires;
 
-                const jwt = generateJWT(payload, options.expire ? expires : undefined);
+                if (options.expire)
+                {
+                    expires = new Date();
+                    if (!options.expire_immediately)
+                    {
+                        expires.setSeconds(expires.getSeconds() + 10);
+                    }
+                }
+
+                const jwt = generateJWT(payload, expires);
 
                 const assertion = await navigator.credentials.get({ publicKey: {
                     challenge: new TextEncoder('utf-8').encode(jwt),
@@ -186,15 +256,15 @@ describe('WebAuthn', function ()
                     }]
                 }});
 
-                done({
+                return {
                     id: assertion.id,
                     response: {
                         authenticatorData: Array.from(new Uint8Array(assertion.response.authenticatorData)),
                         clientDataJSON: new TextDecoder('utf-8').decode(assertion.response.clientDataJSON),
                         signature: Array.from(new Uint8Array(assertion.response.signature))
                     }
-                });
-            } catch (ex) { done({ error: ex.message }); }})(); }, options, cred_id)).value;
+                };
+            }, options, cred_id);
 
             if (assertion.error) { throw new Error(assertion.error); }
 
@@ -208,7 +278,14 @@ describe('WebAuthn', function ()
             assertion.response.signature = BufferToArrayBuffer(sigbuf);
 
             // check assertion with fido2lib first (server)
-            await fido2lib.getAssertionResponse(assertion, client_jwt, origin, 'either', cred_response.authnrData.get('credentialPublicKeyPem'), 0);
+            await fido2lib.assertionResult(assertion,
+            {
+                challenge: client_jwt,
+                origin: origin,
+                factor: 'either',
+                publicKey: cred_response.authnrData.get('credentialPublicKeyPem'),
+                prevCounter: 0
+            });
 
             if (options.modify_sig)
             {
@@ -224,16 +301,33 @@ describe('WebAuthn', function ()
                 assertion.response.clientDataJSON = 'a' + assertion.response.clientDataJSON;
             }
 
-            // authorize assertion and token (challenge) in it (server)
-            const info = await authorize(authz,
-            {
-                assertion: assertion,
-                issuer_id: options.wrong_issuer ? 'foobar' : issuer_id,
-                expected_origin: origin,
-                expected_factor: 'either',
-                prev_counter: 0
-            }, options.allowed_algs);
+            let orig_getTime = Date.prototype.getTime;
 
+            if (process.env.CI === 'true')
+            {
+                Date.prototype.getTime = function ()
+                {
+                    return JSON.parse(Buffer.from(Buffer.from(client_jwt, 'base64').toString().split('.')[1], 'base64')).iat * 1000;
+                };
+            }
+
+            let info;
+            try
+            {
+                // authorize assertion and token (challenge) in it (server)
+                info = await authorize(authz,
+                {
+                    assertion: assertion,
+                    issuer_id: options.wrong_issuer ? 'foobar' : issuer_id,
+                    expected_origin: origin,
+                    expected_factor: 'either',
+                    prev_counter: 0
+                }, options.allowed_algs);
+            }
+            finally
+            {
+                Date.prototype.getTime = orig_getTime;
+            }
 
             if (authz === authz_anon)
             {
@@ -326,6 +420,15 @@ describe('WebAuthn', function ()
             {
                 expect(ex.message).to.equal('signed token supplied in webauthn mode');
             }
+
+            try
+            {
+                await gen_and_verify(az, {expire_immediately: true});
+            }
+            catch (ex)
+            {
+                expect(ex.message).to.equal('expired');
+            }
         }
 
         const close = promisify(cb =>
@@ -344,8 +447,9 @@ describe('WebAuthn', function ()
             expect(ex.message).to.equal('not_open');
         }
 
-        // TODO: update docs
-
-        // TODO: delete authorize-webauthn
+        if (process.env.CI !== 'true')
+        {
+            await writeFile(path.join(__dirname, 'io.json'), JSON.stringify(io));
+        }
     });
 });

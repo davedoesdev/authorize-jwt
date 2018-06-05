@@ -398,13 +398,15 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
                     
                     try
                     {
-                        assertion_response = await ths._fido2lib.getAssertionResponse(
+                        assertion_response = await ths._fido2lib.assertionResult(
                             authz_token.assertion,
-                            challenge,
-                            authz_token.expected_origin,
-                            authz_token.expected_factor,
-                            pem,
-                            authz_token.prev_counter);
+                            {
+                                challenge: challenge,
+                                origin: authz_token.expected_origin,
+                                factor: authz_token.expected_factor,
+                                publicKey: pem,
+                                prevCounter: authz_token.prev_counter
+                            });
                     }
                     catch (ex)
                     {
