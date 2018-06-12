@@ -261,7 +261,8 @@ describe('WebAuthn', function ()
                     response: {
                         authenticatorData: Array.from(new Uint8Array(assertion.response.authenticatorData)),
                         clientDataJSON: new TextDecoder('utf-8').decode(assertion.response.clientDataJSON),
-                        signature: Array.from(new Uint8Array(assertion.response.signature))
+                        signature: Array.from(new Uint8Array(assertion.response.signature)),
+                        userHandle: assertion.response.userHandle ? Array.from(new Uint8Array(assertion.response.userHandle)) : null
                     }
                 };
             }, options, cred_id);
@@ -273,6 +274,7 @@ describe('WebAuthn', function ()
             assertion.id = BufferToArrayBuffer(Buffer.from(assertion.id, 'base64'));
             assertion.response.authenticatorData = BufferToArrayBuffer(Buffer.from(assertion.response.authenticatorData));
             assertion.response.clientDataJSON = BufferToArrayBuffer(Buffer.from(assertion.response.clientDataJSON));
+            assertion.response.userHandle = assertion.response.userHandle ? BufferToArrayBuffer(Buffer.from(assertion.response.userHandle)) : null;
 
             const sigbuf = Buffer.from(assertion.response.signature);
             assertion.response.signature = BufferToArrayBuffer(sigbuf);
@@ -284,7 +286,9 @@ describe('WebAuthn', function ()
                 origin: origin,
                 factor: 'either',
                 publicKey: cred_response.authnrData.get('credentialPublicKeyPem'),
-                prevCounter: 0
+                prevCounter: 0,
+                // not all authenticators can store user handles
+                userHandle: assertion.response.userHandle
             });
 
             if (options.modify_sig)
@@ -321,7 +325,9 @@ describe('WebAuthn', function ()
                     issuer_id: options.wrong_issuer ? 'foobar' : issuer_id,
                     expected_origin: origin,
                     expected_factor: 'either',
-                    prev_counter: 0
+                    prev_counter: 0,
+                    // not all authenticators can store user handles
+                    expected_user_handle: assertion.response.userHandle
                 }, options.allowed_algs);
             }
             finally
