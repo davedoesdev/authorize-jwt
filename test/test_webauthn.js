@@ -161,11 +161,17 @@ describe('WebAuthn', function ()
         // add public key (server)
         const add_pub_key = promisify(authz.keystore.add_pub_key.bind(authz.keystore));
 
-        const issuer_id = await add_pub_key(
-                user_uri,
-                cred_response.authnrData.get('credentialPublicKeyPem'));
+        let issuer_id = await add_pub_key(
+            user_uri,
+            {
+                pub_key: cred_response.authnrData.get('credentialPublicKeyPem'),
+                cred_id: Buffer.from(cred_response.authnrData.get('credId')).toString('base64')
+            });
 
-        const cred_id = Array.from(Buffer.from(cred_response.authnrData.get('credId')));
+        // check we can retrieve the cred ID (server)
+        const get_pub_key_by_uri = promisify(authz.keystore.get_pub_key_by_uri.bind(authz.keystore));
+
+        const cred_id = Array.from(Buffer.from((await get_pub_key_by_uri(user_uri)).cred_id, 'base64'));
 
         // async function to authorize assertion
         const authorize = promisify((authz, authz_token, allowed_algs, cb) =>
@@ -353,6 +359,12 @@ describe('WebAuthn', function ()
 
         for (const az of [authz, authz_anon])
         {
+            await gen_and_verify(az);
+
+            issuer_id = await add_pub_key(
+                user_uri,
+                cred_response.authnrData.get('credentialPublicKeyPem'));
+
             await gen_and_verify(az);
 
             try

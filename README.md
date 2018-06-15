@@ -214,11 +214,13 @@ The token must pass all the [tests made by node-jsjws](https://github.com/davedo
   - If `config.WEBAUTHN_MODE` was _not_ passed to `module.exports` then `authz_token` must be a JWT.
 
     - Unless `config.ANONYMOUS_MODE` was passed to `module.exports` then the `iss` property in the token's payload is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb).
+      - If the retrieved value has a `pub_key` property then that is used as the public key otherwise the retrieved value itself is used.
     - If you don't pass the token as a string then it must be a [`node_jsjws.JWT`](https://github.com/davedoesdev/node-jsjws#jwt) object, pre-processed by calling [`processJWS`](https://github.com/davedoesdev/node-jsjws#jwsprototypeprocessjwsjws).
 
   - If `config.WEBAUTHN_MODE` _was_ passed to `module.exports` then `authz_token` must be a [Web Authentication](https://www.w3.org/TR/webauthn/) assertion. It must have the following properties:
 
     - `{String} issuer_id` This is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb), unless `config.ANONYMOUS_MODE` was passed to `module.exports`.
+      - If the retrieved value has a `pub_key` property then that is used as the public key otherwise the retrieved value itself is used.
     - `{String} expected_origin` The expected origin that the browser authenticator has signed over.
     - `{String} expected_factor` Which factor is expected for the assertion. Valid values are `first`, `second` or `either`. 
     - `{Integer} prev_counter` The previous value of the signature counter for this authenticator.

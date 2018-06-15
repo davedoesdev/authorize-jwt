@@ -27,7 +27,9 @@ describe('authorize-jwt ' + db_type, function ()
         priv_key2,
         ks_for_update,
         issuer_id1,
+        issuer_id2,
         rev1,
+        rev2,
         authz,
         skew_authz,
         anon_authz,
@@ -40,6 +42,7 @@ describe('authorize-jwt ' + db_type, function ()
         token_wrong_signer,
         token_no_signer,
         token,
+        token2,
         alg = 'PS256',
         allowed_algs = [alg];
 
@@ -70,9 +73,12 @@ describe('authorize-jwt ' + db_type, function ()
                 issuer_id1 = issuer_id;
                 rev1 = rev;
 
-                ks_for_update.add_pub_key(uri2, pub_key2, function (err)
+                ks_for_update.add_pub_key(uri2, { pub_key: pub_key2 }, function (err, issuer_id, rev)
                 {
                     if (err) { return cb(err); }
+                    issuer_id2 = issuer_id;
+                    rev2 = rev;
+
                     ks_for_update.deploy(cb);
                 });
             });
@@ -209,6 +215,13 @@ describe('authorize-jwt ' + db_type, function ()
             foo: 90
         }, token_exp, priv_key1);
 
+        token2 = new jsjws.JWT().generateJWTByKey(header,
+        {
+            iss: issuer_id2,
+            aud: audience,
+            foo: 90
+        }, token_exp, priv_key2);
+
         token_wrong_signer = new jsjws.JWT().generateJWTByKey(header,
         {
             iss: issuer_id1,
@@ -323,6 +336,18 @@ describe('authorize-jwt ' + db_type, function ()
             if (err) { return cb(err); }
             expect(uri).to.equal(uri1);
             expect(rev).to.equal(rev1);
+            expect(payload.foo).to.equal(90);
+            cb();
+        });
+    });
+
+    it('should authorize a valid JWT (pub key as property)', function (cb)
+    {
+        authz.authorize(token2, allowed_algs, function (err, payload, uri, rev)
+        {
+            if (err) { return cb(err); }
+            expect(uri).to.equal(uri2);
+            expect(rev).to.equal(rev2);
             expect(payload.foo).to.equal(90);
             cb();
         });

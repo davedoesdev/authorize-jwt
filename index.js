@@ -271,11 +271,13 @@ The token must pass all the [tests made by node-jsjws](https://github.com/davedo
 - If `config.WEBAUTHN_MODE` was _not_ passed to `module.exports` then `authz_token` must be a JWT.
 
   - Unless `config.ANONYMOUS_MODE` was passed to `module.exports` then the `iss` property in the token's payload is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb).
+    - If the retrieved value has a `pub_key` property then that is used as the public key otherwise the retrieved value itself is used.
   - If you don't pass the token as a string then it must be a [`node_jsjws.JWT`](https://github.com/davedoesdev/node-jsjws#jwt) object, pre-processed by calling [`processJWS`](https://github.com/davedoesdev/node-jsjws#jwsprototypeprocessjwsjws).
   
 - If `config.WEBAUTHN_MODE` _was_ passed to `module.exports` then `authz_token` must be a [Web Authentication](https://www.w3.org/TR/webauthn/) assertion. It must have the following properties:
 
   - `{String} issuer_id` This is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb), unless `config.ANONYMOUS_MODE` was passed to `module.exports`.
+    - If the retrieved value has a `pub_key` property then that is used as the public key otherwise the retrieved value itself is used.
   - `{String} expected_origin` The expected origin that the browser authenticator has signed over.
   - `{String} expected_factor` Which factor is expected for the assertion. Valid values are `first`, `second` or `either`. 
   - `{Integer} prev_counter` The previous value of the signature counter for this authenticator.
@@ -372,19 +374,19 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
             return cb(new Error('anonymous token received but not in anonymous mode'));
         }
 
-        ths.keystore.get_pub_key_by_issuer_id(issuer_id, function (err, pem, uri, rev)
+        ths.keystore.get_pub_key_by_issuer_id(issuer_id, function (err, pub_key, uri, rev)
         {
             if (err)
             {
                 return cb(err);
             }
 
-            if (!pem)
+            if (!pub_key)
             {
                 return cb(new Error('no public key found for issuer ID ' + issuer_id));
             }
 
-            var pub_key = jsjws.createPublicKey(pem, 'utf8');
+            pub_key = jsjws.createPublicKey(pub_key.pub_key || pub_key, 'utf8');
 
             try
             {
@@ -412,14 +414,14 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
 
         if (!this._config.ANONYMOUS_MODE)
         {
-            return this.keystore.get_pub_key_by_issuer_id(authz_token.issuer_id, function (err, pem, uri, rev)
+            return this.keystore.get_pub_key_by_issuer_id(authz_token.issuer_id, function (err, pub_key, uri, rev)
             {
                 if (err)
                 {
                     return cb(err);
                 }
 
-                if (!pem)
+                if (!pub_key)
                 {
                     return cb(new Error('no public key found for issuer ID ' + authz_token.issuer_id));
                 }
@@ -436,7 +438,7 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
                                 challenge: challenge,
                                 origin: authz_token.expected_origin,
                                 factor: authz_token.expected_factor,
-                                publicKey: pem,
+                                publicKey: pub_key.pub_key || pub_key,
                                 prevCounter: authz_token.prev_counter,
                                 userHandle: authz_token.expected_user_handle
                             });
