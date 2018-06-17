@@ -1,4 +1,5 @@
 const { Fido2Lib } = require('fido2-lib');
+const { coerceToBase64Url } = require('fido2-lib/lib/utils');
 const { expect } = require('chai');
 const { promisify } = require('util');
 const path = require('path');
@@ -16,19 +17,30 @@ function BufferToArrayBuffer(buf)
 
 let authz, authz_anon;
 
+function complete_webauthn_token(webauthn_token, cb)
+{
+    webauthn_token.expected_factor = 'either';
+    webauthn_token.expected_origin = origin;
+    webauthn_token.prev_counter = 0;
+    webauthn_token.expected_user_handle = webauthn_token.assertion.response.userHandle;
+    cb(null, webauthn_token);
+}
+
 before(async function ()
 {
     authz = await authorize_jwt({
         db_type: 'pouchdb',
         db_for_update: true,
         WEBAUTHN_MODE: true,
-        jwt_audience_uri: audience
+        jwt_audience_uri: audience,
+        complete_webauthn_token: complete_webauthn_token
     });
 
     authz_anon = await authorize_jwt({
         WEBAUTHN_MODE: true,
         ANONYMOUS_MODE: true,
-        jwt_audience_uri: audience
+        jwt_audience_uri: audience,
+        complete_webauthn_token: complete_webauthn_token
     });
 });
 
@@ -188,7 +200,7 @@ describe('WebAuthn', function ()
             });
         });
 
-        async function gen_and_verify(authz, options)
+        async function gen_and_verify2(authz, options)
         {
             options = Object.assign(
             {
@@ -275,12 +287,17 @@ describe('WebAuthn', function ()
 
             if (assertion.error) { throw new Error(assertion.error); }
 
+            if (options.no_user_handle)
+            {
+                assertion.response.userHandle = null;
+            }
+
             // change types for fido2lib
             const client_jwt = JSON.parse(assertion.response.clientDataJSON).challenge;
             assertion.id = BufferToArrayBuffer(Buffer.from(assertion.id, 'base64'));
             assertion.response.authenticatorData = BufferToArrayBuffer(Buffer.from(assertion.response.authenticatorData));
             assertion.response.clientDataJSON = BufferToArrayBuffer(Buffer.from(assertion.response.clientDataJSON));
-            assertion.response.userHandle = assertion.response.userHandle ? BufferToArrayBuffer(Buffer.from(assertion.response.userHandle)) : null;
+            assertion.response.userHandle = assertion.response.userHandle ? BufferToArrayBuffer(Buffer.from(assertion.response.userHandle)) : undefined;
 
             const sigbuf = Buffer.from(assertion.response.signature);
             assertion.response.signature = BufferToArrayBuffer(sigbuf);
@@ -294,7 +311,7 @@ describe('WebAuthn', function ()
                 publicKey: cred_response.authnrData.get('credentialPublicKeyPem'),
                 prevCounter: 0,
                 // not all authenticators can store user handles
-                userHandle: assertion.response.userHandle
+                userHandle: assertion.response.userHandle === undefined ? null : assertion.response.userHandle
             });
 
             if (options.modify_sig)
@@ -311,8 +328,7 @@ describe('WebAuthn', function ()
                 assertion.response.clientDataJSON = 'a' + assertion.response.clientDataJSON;
             }
 
-            let orig_getTime = Date.prototype.getTime;
-
+            const orig_getTime = Date.prototype.getTime;
             if (process.env.CI === 'true')
             {
                 Date.prototype.getTime = function ()
@@ -321,24 +337,68 @@ describe('WebAuthn', function ()
                 };
             }
 
+            const orig_complete_webauthn_token = authz._config.complete_webauthn_token;
+            if (options.no_complete_webauthn_token)
+            {
+                delete authz._config.complete_webauthn_token;
+            }
+
+            if (options.complete_error)
+            {
+                authz._config.complete_webauthn_token = function (webauthn_token, cb)
+                {
+                    cb(new Error('error in completion'));
+                };
+            }
+
             let info;
             try
             {
-                // authorize assertion and token (challenge) in it (server)
-                info = await authorize(authz,
+                // authorize assertion and token (challenge) inside it (server)
+                const issid = options.wrong_issuer ? 'foobar' : issuer_id;
+                let token;
+                if (options.split_error)
                 {
-                    assertion: assertion,
-                    issuer_id: options.wrong_issuer ? 'foobar' : issuer_id,
-                    expected_origin: origin,
-                    expected_factor: 'either',
-                    prev_counter: 0,
-                    // not all authenticators can store user handles
-                    expected_user_handle: assertion.response.userHandle
-                }, options.allowed_algs);
+                    token = {
+                        split: function ()
+                        {
+                            throw new Error('error in split');
+                        }
+                    };
+                }
+                else if (options.string_token)
+                {
+                    token = [issid,
+                             coerceToBase64Url(assertion.id, 'id'),
+                             coerceToBase64Url(assertion.response.clientDataJSON, 'clientDataJSON'),
+                             coerceToBase64Url(assertion.response.authenticatorData, 'authenticatorData'),
+                             coerceToBase64Url(assertion.response.signature, 'signature')];
+                    if (assertion.response.userHandle)
+                    {
+                        token.push(coerceToBase64Url(assertion.response.userHandle, 'userHandle'));
+                    }
+
+                    token = token.join('.');
+                }
+                else
+                {
+                    token = {
+                        assertion: assertion,
+                        issuer_id: issid,
+                        expected_factor: 'either',
+                        expected_origin: origin,
+                        prev_counter: 0,
+                        // not all authenticators can store user handles
+                        expected_user_handle: assertion.response.userHandle
+                    };
+                }
+
+                info = await authorize(authz, token, options.allowed_algs);
             }
             finally
             {
                 Date.prototype.getTime = orig_getTime;
+                authz._config.complete_webauthn_token = orig_complete_webauthn_token;
             }
 
             if (authz === authz_anon)
@@ -353,8 +413,15 @@ describe('WebAuthn', function ()
             }
 
             expect(info.payload.foo).to.equal(90);
+        }
 
-            return info;
+        async function gen_and_verify(authz, options)
+        {
+            await gen_and_verify2(authz, options);
+            await gen_and_verify2(authz, Object.assign(
+            {
+                string_token: true
+            }, options));
         }
 
         for (const az of [authz, authz_anon])
@@ -418,7 +485,10 @@ describe('WebAuthn', function ()
             }
             catch (ex)
             {
-                expect(ex.message).to.equal('Unexpected token a in JSON at position 0');
+                expect(ex.message).to.be.oneOf([
+                    'Unexpected token a in JSON at position 0',
+                    'Unexpected token j in JSON at position 0'
+                ]);
             }
 
             try
@@ -447,6 +517,35 @@ describe('WebAuthn', function ()
             {
                 expect(ex.message).to.equal('expired');
             }
+
+            try
+            {
+                await gen_and_verify(az, {no_complete_webauthn_token: true});
+            }
+            catch (ex)
+            {
+                expect(ex.message).to.equal('no config.complete_webauthn_token');
+            }
+
+            try
+            {
+                await gen_and_verify(az, {complete_error: true});
+            }
+            catch (ex)
+            {
+                expect(ex.message).to.equal('error in completion');
+            }
+
+            try
+            {
+                await gen_and_verify(az, {split_error: true});
+            }
+            catch (ex)
+            {
+                expect(ex.message).to.equal('error in split');
+            }
+
+            await gen_and_verify(az, {no_user_handle: true});
         }
 
         const close = promisify(cb =>
