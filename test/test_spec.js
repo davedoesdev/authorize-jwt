@@ -564,7 +564,7 @@ describe('authorize-jwt ' + db_type, function ()
         });
     });
 
-    it('should pass undefineds when authorization header is malformed', function (cb)
+    it('should pass undefineds when authorization header has no scheme', function (cb)
     {
         var http_server = http.createServer(function (req, res)
         {
@@ -585,6 +585,56 @@ describe('authorize-jwt ' + db_type, function ()
                 port: 6000,
                 headers: {
                     Authorization: 'foo:bar'
+                }
+            }).end();
+        });
+    });
+
+    it('should pass empty info when authorization header has no separator', function (cb)
+    {
+        var http_server = http.createServer(function (req, res)
+        {
+            authz.get_authz_data(req, function (err, req_info, req_token)
+            {
+                if (err) { return cb(err); }
+                expect(req_info).to.equal('');
+                expect(req_token).to.equal('foo;bar');
+                res.end();
+                http_server.close(cb);
+            });
+        }).listen(6000, '127.0.0.1', function (err)
+        {
+            if (err) { return cb(err); }
+            http.request(
+            {
+                hostname: '127.0.0.1',
+                port: 6000,
+                auth: 'foo;bar'
+            }).end();
+        });
+    });
+
+    it('should pass empty info when authorization header has invalid base 64 characters', function (cb)
+    {
+        var http_server = http.createServer(function (req, res)
+        {
+            authz.get_authz_data(req, function (err, req_info, req_token)
+            {
+                if (err) { return cb(err); }
+                expect(req_info).to.equal('');
+                expect(req_token).to.equal(Buffer.from('foo;bar', 'base64').toString());
+                res.end();
+                http_server.close(cb);
+            });
+        }).listen(6000, '127.0.0.1', function (err)
+        {
+            if (err) { return cb(err); }
+            http.request(
+            {
+                hostname: '127.0.0.1',
+                port: 6000,
+                headers: {
+                    Authorization: 'Basic foo;bar'
                 }
             }).end();
         });
