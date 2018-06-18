@@ -564,6 +564,32 @@ describe('authorize-jwt ' + db_type, function ()
         });
     });
 
+    it('should pass undefineds when authorization header is malformed', function (cb)
+    {
+        var http_server = http.createServer(function (req, res)
+        {
+            authz.get_authz_data(req, function (err, req_info, req_token)
+            {
+                if (err) { return cb(err); }
+                expect(req_info).to.equal(undefined);
+                expect(req_token).to.equal(undefined);
+                res.end();
+                http_server.close(cb);
+            });
+        }).listen(6000, '127.0.0.1', function (err)
+        {
+            if (err) { return cb(err); }
+            http.request(
+            {
+                hostname: '127.0.0.1',
+                port: 6000,
+                headers: {
+                    Authorization: 'foo:bar'
+                }
+            }).end();
+        });
+    });
+
     it('should emit change event when public key is updated', function (cb)
     {
         var change_count = 0, replicated_count = 0, old_rev = rev1;

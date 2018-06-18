@@ -254,11 +254,14 @@ AuthorizeJWT.prototype.get_authz_data = function (req, cb)
     if (req.headers.authorization)
     {
         parsed_auth = basic_auth_parser(req.headers.authorization);
-        authz_info = parsed_auth.username;
-        authz_token = parsed_auth.password.split(',');
-        if (authz_token.length === 1)
+        if (parsed_auth.password !== undefined)
         {
-            authz_token = authz_token[0];
+            authz_info = parsed_auth.username;
+            authz_token = parsed_auth.password.split(',');
+            if (authz_token.length === 1)
+            {
+                authz_token = authz_token[0];
+            }
         }
     }
     else
