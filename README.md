@@ -9,7 +9,7 @@ Simple [JSON Web Token](http://self-issued.info/docs/draft-ietf-oauth-json-web-t
 - Extracts tokens from HTTP Basic Authorization headers or query strings.
 - Unit tests with 100% code coverage.
 - Support for the [Web Authentication](https://www.w3.org/TR/webauthn/) browser API.
-  - [Use case](https://github.com/w3c/webauthn/issues/902#issuecomment-388223929) (thanks to @emlun for the summary):
+  - [Use case](https://github.com/w3c/webauthn/issues/902#issuecomment-388223929) (thanks to [Emil Lundberg](https://github.com/emlun) for the summary):
     1. Alice logs in and proves she's an admin (e.g. by signing a challenge generated on the server, which is then verified on the server).
     2. Alice uses client side script to generate a JWT.
     3. Client side script uses Alice's public key credential to sign the JWT.
