@@ -7,7 +7,7 @@ Simple [JSON Web Token](http://self-issued.info/docs/draft-ietf-oauth-json-web-t
 - Uses [`pub-keystore`](https://github.com/davedoesdev/pub-keystore) to retrieve and manage token issuers' public keys.
 - Adds extra checks for token audience and maximum expiry time.
 - Optional 'anonymous' mode where token signatures aren't verified.
-- Extracts tokens from HTTP Basic Authorization headers or query strings.
+- Extracts tokens from HTTP Authorization (Basic or Bearer) headers or query strings.
 - Unit tests with 100% code coverage.
 - Support for the [Web Authentication](https://www.w3.org/TR/webauthn/) browser API.
   - [Use case](https://github.com/w3c/webauthn/issues/902#issuecomment-388223929) (thanks to [Emil Lundberg](https://github.com/emlun) for the summary):
@@ -235,7 +235,7 @@ AuthorizeJWT.prototype._validate_token = function (payload, uri, rev, assertion_
 /**
 Extracts JSON Web Tokens from a HTTP request.
 
-@param {http.IncomingMessage} req [HTTP request object](http://nodejs.org/api/http.html#http_http_incomingmessage) which should contain the tokens either in the `Authorization` header (Basic Auth) or in the `authz_token` query string parameter.
+@param {http.IncomingMessage} req [HTTP request object](http://nodejs.org/api/http.html#http_http_incomingmessage) which should contain the tokens either in the `Authorization` header (Basic or Bearer auth) or in the `authz_token` query string parameter.
 
 @param {Function} cb Function called with the tokens obtained from `req`. The `Authorization` header is used in preference to the query string. `cb` will receive the following arguments:
 - `{Object} err` If an error occurred then details of the error, otherwise `null`.
@@ -253,11 +253,21 @@ AuthorizeJWT.prototype.get_authz_data = function (req, cb)
     
     if (req.headers.authorization)
     {
-        parsed_auth = basic_auth_parser(req.headers.authorization);
-        if (parsed_auth.password !== undefined)
+        const [ type, bearer_token ] = req.headers.authorization.split(' ');
+        if (type === 'Bearer')
         {
+            authz_info = '';
+            authz_token = bearer_token;
+        }
+        else
+        {
+            parsed_auth = basic_auth_parser(req.headers.authorization);
             authz_info = parsed_auth.username;
-            authz_token = parsed_auth.password.split(',');
+            authz_token = parsed_auth.password;
+        }
+        if (authz_token !== undefined)
+        {
+            authz_token = authz_token.split(',');
             if (authz_token.length === 1)
             {
                 authz_token = authz_token[0];

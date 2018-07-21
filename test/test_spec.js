@@ -445,7 +445,7 @@ describe('authorize-jwt ' + db_type, function ()
         });
     });
 
-    it('should extract authorization data from HTTP header', function (cb)
+    it('should extract authorization data from HTTP header (Basic)', function (cb)
     {
         var http_server = http.createServer(function (req, res)
         {
@@ -469,7 +469,7 @@ describe('authorize-jwt ' + db_type, function ()
         });
     });
 
-    it('should extract multiple authorization tokens from HTTP header', function (cb)
+    it('should extract multiple authorization tokens from HTTP header (Basic)', function (cb)
     {
         var http_server = http.createServer(function (req, res)
         {
@@ -489,6 +489,58 @@ describe('authorize-jwt ' + db_type, function ()
                 hostname: '127.0.0.1',
                 port: 6000,
                 auth: 'test:' + token + ',' + token_no_issuer
+            }).end();
+        });
+    });
+
+    it('should extract authorization data from HTTP header (Bearer)', function (cb)
+    {
+        var http_server = http.createServer(function (req, res)
+        {
+            authz.get_authz_data(req, function (err, req_info, req_token)
+            {
+                if (err) { return cb(err); }
+                expect(req_info).to.equal('');
+                expect(req_token).to.equal(token);
+                res.end();
+                http_server.close(cb);
+            });
+        }).listen(6000, '127.0.0.1', function (err)
+        {
+            if (err) { return cb(err); }
+            http.request(
+            {
+                hostname: '127.0.0.1',
+                port: 6000,
+                headers: {
+                    Authorization: 'Bearer ' + token
+                }
+            }).end();
+        });
+    });
+
+    it('should extract multiple authorization tokens from HTTP header (Bearer)', function (cb)
+    {
+        var http_server = http.createServer(function (req, res)
+        {
+            authz.get_authz_data(req, function (err, req_info, req_token)
+            {
+                if (err) { return cb(err); }
+                expect(req_info).to.equal('');
+                expect(req_token).to.eql([token, token_no_issuer]);
+                res.end();
+                http_server.close(cb);
+            });
+        }).listen(6000, '127.0.0.1', function (err)
+        {
+            if (err) { return cb(err); }
+            http.request(
+            {
+                hostname: '127.0.0.1',
+                port: 6000,
+                headers: {
+                    Authorization: 'Bearer ' + token + ',' + token_no_issuer
+                }
             }).end();
         });
     });

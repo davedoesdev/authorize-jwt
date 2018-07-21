@@ -292,6 +292,11 @@ describe('WebAuthn', function ()
                 assertion.response.userHandle = null;
             }
 
+            if (options.empty_user_handle)
+            {
+                assertion.response.userHandle = [];
+            }
+
             // change types for fido2lib
             const client_jwt = JSON.parse(assertion.response.clientDataJSON).challenge;
             assertion.id = BufferToArrayBuffer(Buffer.from(assertion.id, 'base64'));
@@ -546,6 +551,7 @@ describe('WebAuthn', function ()
             }
 
             await gen_and_verify(az, {no_user_handle: true});
+            await gen_and_verify(az, {empty_user_handle: true});
         }
 
         const close = promisify(cb =>
