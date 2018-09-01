@@ -257,6 +257,20 @@ describe('authorize-jwt ' + db_type, function ()
         });
     });
 
+    it('should use keystore config property', function (cb)
+    {
+        var ks = new Object();
+        authorize_jwt(
+        {
+            keystore: ks
+        }, function (err, authz)
+        {
+            if (err) { return cb(err); }
+            expect(authz.keystore).to.equal(ks);
+            cb();
+        });
+    });
+
     it('should fail to authorize JWT without an issuer', function (cb)
     {
         authz.authorize(token_no_issuer, allowed_algs, function (err)

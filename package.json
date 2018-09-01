@@ -1,7 +1,7 @@
 {
   "name": "authorize-jwt",
   "description": "Simple JSON Web Token authorization",
-  "version": "5.4.0",
+  "version": "5.5.0",
   "homepage": "https://github.com/davedoesdev/authorize-jwt",
   "author": {
     "name": "David Halls",

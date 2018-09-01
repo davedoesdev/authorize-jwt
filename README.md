@@ -172,12 +172,14 @@ _Source: [index.js](/index.js)_
       - `{Object} err` If err error occurred then pass details of the error, otherwise pass `null`.
       - `{Object} webauthn_token` This should have the same properties as `partial_webauthn_token` plus `expected_factor`, `expected_origin`, `prev_counter` and `expected_user_handle` (see [`authorize`](#authorizejwtprototypeauthorizeauthz_token-allowed_algs-cb)). It's safe to modify `partial_webauthn_token` and then pass it here.
 
+  - `{PubKeyStore} [keystore]` If you have a pre-existing [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore), pass it here. The authorizer will use it to look up the public keys of token issuers. The default is to make a new one by calling [`pub-keystore`](https://github.com/davedoesdev/pub-keystore#moduleexportsconfig-cb).
+
 - `{Function} cb` Function called with the result of creating the authorizer. It will receive the following arguments:
   - `{Object} err` If an error occurred then details of the error, otherwise `null`.
 
   - `{AuthorizeJWT} authz` The `AuthorizeJWT` object. As well as `AuthorizeJWT`'s prototype methods, it has the following property:
 
-    - `{PubKeyStore} keystore` The [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore) object that the authorizer is using to lookup the public keys of token issuers. For example, you could listen to [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) events so you know that previously verified tokens are invalid. Note: If you pass `config.ANONYMOUS_MODE` as `true` then `keystore` will be `undefined`.
+    - `{PubKeyStore} keystore` The [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore) object that the authorizer is using to look up the public keys of token issuers. For example, you could listen to [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) events so you know that previously verified tokens are invalid. Note: If you pass `config.ANONYMOUS_MODE` as `true` then `keystore` will be `undefined`.
 
 <sub>Go: [TOC](#tableofcontents) | [module](#toc_module)</sub>
 
