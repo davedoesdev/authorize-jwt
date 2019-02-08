@@ -1,5 +1,5 @@
-const { Fido2Lib } = require('fido2-lib');
-const { coerceToBase64Url } = require('fido2-lib/lib/utils');
+const { Fido2Lib } = require('@davedoesdev/fido2-lib');
+const { coerceToBase64Url } = require('@davedoesdev/fido2-lib/lib/utils');
 const { expect } = require('chai');
 const { promisify } = require('util');
 const path = require('path');

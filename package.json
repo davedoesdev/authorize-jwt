@@ -1,7 +1,7 @@
 {
   "name": "authorize-jwt",
   "description": "Simple JSON Web Token authorization",
-  "version": "5.5.2",
+  "version": "5.5.3",
   "homepage": "https://github.com/davedoesdev/authorize-jwt",
   "author": {
     "name": "David Halls",
@@ -34,25 +34,25 @@
   },
   "dependencies": {
     "basic-auth-parser": "~0.0.2",
-    "fido2-lib": "^2.1.1",
+    "@davedoesdev/fido2-lib": "^2.4.0",
     "jsjws": "^5.3.0",
     "pub-keystore": "~3.1.4"
   },
   "devDependencies": {
-    "grunt": "~1.0.1",
-    "grunt-eslint": "~20.1.0",
+    "grunt": "~1.0.3",
+    "grunt-eslint": "~21.0.0",
     "grunt-mocha-test": "~0.13.3",
-    "grunt-apidox": "~2.0.0",
+    "grunt-apidox": "~2.0.1",
     "grunt-bg-shell": "~2.3.3",
-    "mocha": "~4.1.0",
-    "chai": "~4.1.2",
-    "nyc": "~11.4.1",
-    "coveralls": "~3.0.0",
-    "babel-eslint": "~8.2.3",
-    "wdio-mocha-framework": "^0.5.13",
-    "wdio-selenium-standalone-service": "0.0.10",
-    "wdio-spec-reporter": "^0.1.4",
-    "@davedoesdev/wdio-static-server-service": "^1.2.0",
-    "webdriverio": "^4.12.0"
+    "mocha": "~5.2.0",
+    "chai": "~4.2.0",
+    "nyc": "~13.2.0",
+    "coveralls": "~3.0.2",
+    "babel-eslint": "~10.0.1",
+    "wdio-mocha-framework": "^0.6.4",
+    "wdio-selenium-standalone-service": "0.0.12",
+    "wdio-spec-reporter": "^0.1.5",
+    "@davedoesdev/wdio-static-server-service": "^1.2.1",
+    "webdriverio": "^4.14.2"
   }
 }

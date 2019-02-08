@@ -149,7 +149,7 @@ var util = require('util'),
     jsjws = require('jsjws'),
     basic_auth_parser = require('basic-auth-parser'),
     pub_keystore = require('pub-keystore'),
-    Fido2Lib = require('fido2-lib').Fido2Lib;
+    Fido2Lib = require('@davedoesdev/fido2-lib').Fido2Lib;
 
 function ab64(s)
 {
