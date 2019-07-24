@@ -49,7 +49,7 @@ let io;
 if (process.env.CI === 'true')
 {
     global.browser = {
-        timeouts()
+        setTimeout()
         {
         },
 
@@ -72,7 +72,7 @@ async function executeAsync(f, ...args)
         return JSON.parse(io.shift()).res;
     }
 
-    const r = (await browser.executeAsync(function (f, ...args)
+    const r = await browser.executeAsync(function (f, ...args)
     {
         (async function ()
         {
@@ -86,7 +86,7 @@ async function executeAsync(f, ...args)
                 done({ error: ex.message }); 
             }
         })();
-    }, f.toString(), ...args)).value;
+    }, f.toString(), ...args);
 
     io.push(JSON.stringify({ req: args, res: r }));
     return r;
@@ -97,7 +97,7 @@ describe('WebAuthn', function ()
     it('should authorize', async function ()
     {
         this.timeout(5 * 60 * 1000);
-        browser.timeouts('script', 5 * 60 * 1000);
+        browser.setTimeout({ 'script': 5 * 60 * 1000 });
 
         //await browser.pause(60000);
         await browser.url(origin + '/test_webauthn.html');

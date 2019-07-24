@@ -31,7 +31,7 @@ module.exports = function (grunt)
 
         bgShell: {
             cover: {
-                cmd: "./node_modules/.bin/nyc -x Gruntfile.js -x 'test/**' -x wdio.conf.js node --napi-modules ./node_modules/.bin/grunt test-webauthn test",
+                cmd: "./node_modules/.bin/nyc -x Gruntfile.js -x 'test/**' -x wdio.conf.js ./node_modules/.bin/grunt test-webauthn test",
                 fail: true,
                 execOpts: {
                     maxBuffer: 0

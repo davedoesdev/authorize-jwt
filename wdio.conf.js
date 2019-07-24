@@ -1,4 +1,23 @@
-var StaticServerService = require('@davedoesdev/wdio-static-server-service/launcher');
+// Make @wdio/static-server-service use HTTPS
+const fs = require('fs');
+const https = require('https');
+const { launcher: StaticServerService } = require('@wdio/static-server-service');
+class SecureStaticServerService extends StaticServerService {
+    set server(v) {
+        v.listen = function (port, cb) {
+            const key = fs.readFileSync('./test/keys/server.key');
+            const cert = fs.readFileSync('./test/keys/server.crt');
+            const server = https.createServer({ key, cert }, this);
+            server.listen(port, cb);
+        };
+        this._server = v;
+    }
+
+    get server() {
+        return this._server;
+    }
+}
+
 exports.config = {
     
     //
@@ -60,7 +79,7 @@ exports.config = {
     sync: false,
     //
     // Level of logging verbosity: silent | verbose | command | data | result | error
-    logLevel: 'verbose',
+    logLevel: 'trace',
     //
     // Enables colors for log output.
     coloredLogs: true,
@@ -113,7 +132,7 @@ exports.config = {
     // Services take over a specific job you don't want to take care of. They enhance
     // your test setup with almost no effort. Unlike plugins, they don't add new
     // commands. Instead, they hook themselves up into the test process.
-    services: ['selenium-standalone',StaticServerService],
+    services: ['selenium-standalone', [SecureStaticServerService]],
     //
     // Framework you want to run your specs with.
     // The following are supported: Mocha, Jasmine, and Cucumber
@@ -137,12 +156,8 @@ exports.config = {
 
     staticServerFolders: [
         { mount: '/', path: './test/fixtures' }
-    ],
+    ]
 
-    httpsConfig: {
-        keyPath: './test/keys/server.key',
-        certPath: './test/keys/server.crt'
-    }
     //
     // =====
     // Hooks
