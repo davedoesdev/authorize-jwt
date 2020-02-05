@@ -100,7 +100,9 @@ describe('authorize-jwt ' + db_type, function ()
             deploy_name: 'test',
             jwt_audience_uri: audience,
             jwt_max_token_expiry: 60,
-            keep_master_open: true
+            keep_master_open: true,
+            username: 'admin',
+            password: 'admin'
         }, function (err, the_authz)
         {
             if (err) { return cb(err); }
@@ -127,7 +129,9 @@ describe('authorize-jwt ' + db_type, function ()
             jwt_audience_uri: audience,
             jwt_max_token_expiry: 60,
             keep_master_open: true,
-            iat_skew: -10
+            iat_skew: -10,
+            username: 'admin',
+            password: 'admin'
         }, function (err, the_authz)
         {
             if (err) { return cb(err); }
@@ -146,7 +150,9 @@ describe('authorize-jwt ' + db_type, function ()
         authorize_jwt(
         {
             jwt_audience_uri: audience,
-            ANONYMOUS_MODE: true
+            ANONYMOUS_MODE: true,
+            username: 'admin',
+            password: 'admin'
         }, function (err, the_authz)
         {
             if (err) { return cb(err); }
@@ -163,7 +169,9 @@ describe('authorize-jwt ' + db_type, function ()
             db_type: db_type,
             deploy_name: 'no_audience',
             jwt_max_token_expiry: 60,
-            keep_master_open: true
+            keep_master_open: true,
+            username: 'admin',
+            password: 'admin'
         }, function (err, the_authz)
         {
             if (err) { return cb(err); }
@@ -816,7 +824,7 @@ before(function (cb)
     this.timeout(60000);
 
     couchdb_process = child_process.spawn(
-            path.join(__dirname, '..', 'node_modules', 'pub-keystore', 'couchdb', 'run_couchdb.sh'),
+            path.join(__dirname, '..', 'node_modules', 'pub-keystore', 'test', 'fixtures', 'run_couchdb.sh'),
             [],
             { stdio: 'inherit' });
 
