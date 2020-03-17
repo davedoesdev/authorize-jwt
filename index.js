@@ -3,10 +3,9 @@
 
 Simple [JSON Web Token](http://self-issued.info/docs/draft-ietf-oauth-json-web-token.html) authorization module for Node.js.
 
-- Uses [`node-jsjws`](https://github.com/davedoesdev/node-jsjws) to perform verification of tokens.
+- Uses [`jose`](https://github.com/panva/jose) to perform verification of tokens.
 - Uses [`pub-keystore`](https://github.com/davedoesdev/pub-keystore) to retrieve and manage token issuers' public keys.
-- Adds extra checks for token audience and maximum expiry time.
-- Optional 'anonymous' mode where token signatures aren't verified.
+- Adds extra check for maximum expiry time.
 - Extracts tokens from HTTP Authorization (Basic or Bearer) headers or query strings.
 - Unit tests with 100% code coverage.
 - Support for the [Web Authentication](https://www.w3.org/TR/webauthn/) browser API.
@@ -24,80 +23,69 @@ The API is described [here](#tableofcontents).
 ## Example
 
 ```javascript
-var authorize_jwt = require('authorize-jwt'),
-    http = require('http'),
-    assert = require('assert'),
-    jsjws = require('jsjws'),
-    priv_key = jsjws.generatePrivateKey(2048, 65537),
-    pub_key = priv_key.toPublicPem('utf8'),
-    the_uri = 'mailto:example@davedoesdev.com',
-    audience = 'urn:authorize-jwt:example';
+const authorize_jwt = require('authorize-jwt');
+const http = require('http');
+const assert = require('assert');
+const { JWK, JWT } = require('jose');
+const priv_key = JWK.generateSync('OKP');
+const pub_key = priv_key.toPEM();
+const the_uri = 'mailto:example@davedoesdev.com';
+const audience = 'urn:authorize-jwt:example';
 
 // create authorization object
-authorize_jwt(
-{
+authorize_jwt({
     db_type: 'pouchdb',
     db_for_update: true, // we're going to update a public key
-    jwt_audience_uri: audience,
-    jwt_max_token_expiry: 60
-}, function (err, authz)
-{
+    max_token_expiry: 60
+}, function (err, authz) {
     assert.ifError(err);
 
     var the_issuer_id, the_rev, change_rev;
 
-    function doit()
-    {
+    function doit() {
         assert.equal(the_rev, change_rev);
 
         // create and sign a JWT
-        var exp = new Date(), the_token, http_server;
-        exp.setMinutes(exp.getMinutes() + 1);
-        the_token = new jsjws.JWT().generateJWTByKey({ alg: 'PS256' },
-        {
-            iss: the_issuer_id,
-            aud: audience,
+        const the_token = JWT.sign({
             foo: 'bar'
-        }, exp, priv_key);
+        }, priv_key, {
+            algorithm: 'EdDSA',
+            issuer: the_issuer_id,
+            audience,
+            expiresIn: '1m'
+        });
 
         // send and receive the token via HTTP Basic Auth
-        http_server = http.createServer(function (req, res)
-        {
-            authz.get_authz_data(req, function (err, info, token)
-            {
+        const http_server = http.createServer(function (req, res) {
+            authz.get_authz_data(req, function (err, info, token) {
                 assert.ifError(err);
                 assert.equal(info, 'test');
                 assert.equal(token, the_token);
 
                 // authorize the token
-                authz.authorize(token, ['PS256'], function (err, payload, uri, rev)
-                {
+                authz.authorize(token, ['EdDSA'], function (err, payload, uri, rev) {
                     assert.ifError(err);
                     assert.equal(uri, the_uri);
                     assert.equal(rev, the_rev);
                     assert.equal(payload.foo, 'bar');
                     res.end();
-                    http_server.close();
-                    console.log('done')
+                    http_server.close(cb);
                 });
             });
-        }).listen(6000, '127.0.0.1', function ()
-        {
+        }).listen(6000, '127.0.0.1', function () {
             http.request({ hostname: '127.0.0.1', port: 6000, auth: 'test:' + the_token }).end();
         });
     }
 
     // just to demonstrate change events
-    authz.keystore.once('change', function (uri, rev)
-    {
+    authz.keystore.once('change', function (uri, rev) {
         assert.equal(uri, the_uri);
         change_rev = rev;
         if (the_rev) { doit(); }
     });
 
     // add public key to the store
-    authz.keystore.add_pub_key(the_uri, pub_key, function (err, issuer_id, rev)
-    {
+    authz.keystore.add_pub_key(the_uri, pub_key, function (err, issuer_id, rev) {
         assert.ifError(err);
         the_issuer_id = issuer_id;
         the_rev = rev;
@@ -146,7 +134,7 @@ grunt lint
 
 var util = require('util'),
     url = require('url'),
-    jsjws = require('jsjws'),
+    { JWK, JWT } = require('jose'),
     basic_auth_parser = require('basic-auth-parser'),
     pub_keystore = require('pub-keystore'),
     Fido2Lib = require('@davedoesdev/fido2-lib').Fido2Lib;
@@ -171,22 +159,18 @@ function AuthorizeJWT(config, keystore)
 /**
 Creates a JWT authorizer.
 
-@param {Object} config Configures the authorizer. `config` is passed down to [`pub-keystore`](https://github.com/davedoesdev/pub-keystore#moduleexportsconfig-cb), [`node-jsjws`](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key-allowed_algs) and [`fido2-lib`](https://apowers313.github.io/fido2-lib/Fido2Lib.html). The following extra properties are supported:
-- `{String} [jwt_audience_uri]` If set then all JSON Web Tokens must have an `aud` property in their payload which exactly equals `jwt_audience_uri`. Defaults to `undefined`.
+@param {Object} config Configures the authorizer. `config` is passed down to [`pub-keystore`](https://github.com/davedoesdev/pub-keystore#moduleexportsconfig-cb), [`jose`](https://github.com/panva/jose/blob/master/docs/README.md#jwtverifytoken-keyorstore-options) and [`fido2-lib`](https://apowers313.github.io/fido2-lib/Fido2Lib.html). The following extra properties are supported:
+- `{Integer} [max_token_expiry]` If set then all JSON Web Tokens must expire sooner than `max_token_expiry` seconds in the future (from the time they're presented). Defaults to `undefined`.
 
-- `{Integer} [jwt_max_token_expiry]` If set then all JSON Web Tokens must expire sooner than `jwt_max_token_expiry` seconds in the future (from the time they're presented). Defaults to `undefined`.
+- `{Boolean} [WEBAUTHN_MODE]` If truthy then instead of verifying standalone JSON Web Tokens, the authorizer will verify signed [assertions](https://www.w3.org/TR/webauthn/#authenticatorassertionresponse) generated by the [Web Authentication](https://www.w3.org/TR/webauthn/) browser API. The challenge contained in each assertion's client data must be an _unsigned_ JSON Web Token. Defaults to `false`.
 
-- `{Boolean} [ANONYMOUS_MODE]` Whether to authorize all JSON Web Tokens without verifying their signatures. Note that tokens must always pass the [basic checks](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key-allowed_algs) performed by `node-jsjws`. Defaults to `false`.
+- `{Function} [complete_webauthn_token]` This applies only if `WEBAUTHN_MODE` is truthy and is mandatory if you pass strings to [`authorize`](#authorizejwtprototypeauthorizeauthz_token-algorithms-cb). It will receive the following arguments:
 
-- `{Boolean} [WEBAUTHN_MODE]` If set to `true` then instead of verifying standalone JSON Web Tokens, the authorizer will verify signed [assertions](https://www.w3.org/TR/webauthn/#authenticatorassertionresponse) generated by the [Web Authentication](https://www.w3.org/TR/webauthn/) browser API. The challenge contained in each assertion's client data must be an _unsigned_ JSON Web Token. Defaults to `false`.
-
-- `{Function} [complete_webauthn_token]` This applies only if `WEBAUTHN_MODE` is true and is mandatory if you pass strings to [`authorize`](#authorizejwtprototypeauthorizeauthz_token-allowed_algs-cb). It will receive the following arguments:
-
-  - `{Object} partial_webauthn_token`. This is a partially-complete Web Authentication assertion containing `issuer_id` and `assertion` properties (see [`authorize`](#authorizejwtprototypeauthorizeauthz_token-allowed_algs-cb) for a description).
+  - `{Object} partial_webauthn_token`. This is a partially-complete Web Authentication assertion containing `issuer_id` and `assertion` properties (see [`authorize`](#authorizejwtprototypeauthorizeauthz_token-algorithms-cb) for a description).
   - `{Function} cb` Call this function when you have filled in the remaining properties. It takes the following arguments:
 
-    - `{Object} err` If err error occurred then pass details of the error, otherwise pass `null`.
-    - `{Object} webauthn_token` This should have the same properties as `partial_webauthn_token` plus `expected_factor`, `expected_origin`, `prev_counter` and `expected_user_handle` (see [`authorize`](#authorizejwtprototypeauthorizeauthz_token-allowed_algs-cb)). It's safe to modify `partial_webauthn_token` and then pass it here.
+    - `{Object} err` If an error occurred then pass details of the error, otherwise pass `null`.
+    - `{Object} webauthn_token` This should have the same properties as `partial_webauthn_token` plus `expected_factor`, `expected_origin`, `prev_counter` and `expected_user_handle` (see [`authorize`](#authorizejwtprototypeauthorizeauthz_token-algorithms-cb)). It's safe to modify `partial_webauthn_token` and then pass it here.
 
 - `{PubKeyStore} [keystore]` If you have a pre-existing [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore), pass it here. The authorizer will use it to look up the public keys of token issuers. The default is to make a new one by calling [`pub-keystore`](https://github.com/davedoesdev/pub-keystore#moduleexportsconfig-cb).
 
@@ -195,41 +179,29 @@ Creates a JWT authorizer.
 
 - `{AuthorizeJWT} authz` The `AuthorizeJWT` object. As well as `AuthorizeJWT`'s prototype methods, it has the following property:
 
-  - `{PubKeyStore} keystore` The [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore) object that the authorizer is using to look up the public keys of token issuers. For example, you could listen to [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) events so you know that previously verified tokens are invalid. Note: If you pass `config.ANONYMOUS_MODE` as `true` then `keystore` will be `undefined`.
+  - `{PubKeyStore} keystore` The [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore) object that the authorizer is using to look up the public keys of token issuers. For example, you could listen to [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) events so you know that previously verified tokens are invalid.
 */
 module.exports = function (config, cb)
 {
-    if (config.ANONYMOUS_MODE)
+    if (config.keystore)
     {
-        cb(null, new AuthorizeJWT(config));
+        return cb(null, new AuthorizeJWT(config, config.keystore));
     }
-    else if (config.keystore)
+
+    pub_keystore(config, function (err, ks)
     {
-        cb(null, new AuthorizeJWT(config, config.keystore));
-    }
-    else
-    {
-        pub_keystore(config, function (err, ks)
-        {
-            if (err) { return cb(err); }
-            cb(null, new AuthorizeJWT(config, ks));
-        });
-    }
+        if (err) { return cb(err); }
+        cb(null, new AuthorizeJWT(config, ks));
+    });
 };
 
 AuthorizeJWT.prototype._validate_token = function (payload, uri, rev, assertion_response, cb)
 {
-    if (this._config.jwt_audience_uri &&
-        (payload.aud !== this._config.jwt_audience_uri))
-    {
-        return cb(new Error('unrecognized authorization token audience: ' + payload.aud));
-    }
-
-    if (this._config.jwt_max_token_expiry)
+    if (this._config.max_token_expiry)
     {
         var now = new Date().getTime() / 1000;
 
-        if ((payload.exp - now) > this._config.jwt_max_token_expiry) 
+        if ((payload.exp - now) > this._config.max_token_expiry) 
         {
             return cb(new Error('authorization token expiry too long'));
         }
@@ -293,23 +265,20 @@ AuthorizeJWT.prototype.get_authz_data = function (req, cb)
 /**
 Authorizes (or not) a JSON Web Token.
 
-The token must pass all the [tests made by node-jsjws](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key-allowed_algs) and
+The token must pass all the tests made by [`jose`](https://github.com/panva/jose/blob/master/docs/README.md#jwtverifytoken-keyorstore-options) and
 
-- If `config.jwt_audience_uri` was passed to [`module.exports`](#moduleexportsconfig-cb) then the token's payload must have a matching `aud` property.
+- If `config.max_token_expiry` was passed to [`module.exports`](#moduleexportsconfig-cb) then the token must expire sooner than `config.max_token_expiry` seconds in the future.
 
-- If `config.jwt_max_token_expiry` was passed to [`module.exports`](#moduleexportsconfig-cb) then the token must expire sooner than `config.jwt_max_token_expiry` seconds in the future.
+@param {String|Object} authz_token The token to authorize.
 
-@param {String|JWT|Object} authz_token The token to authorize.
+- If `config.WEBAUTHN_MODE` was _not_ passed truthy to [`module.exports`](#moduleexportsconfig-cb) then `authz_token` must be a JWT string.
 
-- If `config.WEBAUTHN_MODE` was _not_ passed to [`module.exports`](#moduleexportsconfig-cb) then `authz_token` must be a JWT.
-
-  - Unless `config.ANONYMOUS_MODE` was passed to [`module.exports`](#moduleexportsconfig-cb) then the `iss` property in the token's payload is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb).
-    - If the retrieved value has a `pub_key` property then that is used as the public key otherwise the retrieved value itself is used.
-  - If you don't pass the token as a string then it must be a [`node_jsjws.JWT`](https://github.com/davedoesdev/node-jsjws#jwt) object, pre-processed by calling [`processJWS`](https://github.com/davedoesdev/node-jsjws#jwsprototypeprocessjwsjws).
+  - The `iss` property in the token's payload is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb).
+  - If the retrieved value has a `pub_key` property then that is used as the public key otherwise the retrieved value itself is used.
   
-- If `config.WEBAUTHN_MODE` _was_ passed to [`module.exports`](#moduleexportsconfig-cb) then `authz_token` must be a [Web Authentication](https://www.w3.org/TR/webauthn/) assertion. It must either be an object with the following properties or a string of the form `issuer_id.id.clientDataJSON.authenticatorData.signature.userHandle` - i.e. some of the properties described below separated by a period. In the latter case, the remaining properties are obtained by calling `config.complete_webauthn_token` (see [`module.exports`](#moduleexportsconfig-cb)).
+- If `config.WEBAUTHN_MODE` _was_ passed truthy to [`module.exports`](#moduleexportsconfig-cb) then `authz_token` must be a [Web Authentication](https://www.w3.org/TR/webauthn/) assertion. It must either be an object with the following properties or a string of the form `issuer_id.id.clientDataJSON.authenticatorData.signature.userHandle` - i.e. some of the properties described below separated by a period. In the latter case, the remaining properties are obtained by calling `config.complete_webauthn_token` (see [`module.exports`](#moduleexportsconfig-cb)).
 
-  - `{String} issuer_id` This is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb), unless `config.ANONYMOUS_MODE` was passed to [`module.exports`](#moduleexportsconfig-cb).
+  - `{String} issuer_id` This is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb).
     - If the retrieved value has a `pub_key` property then that is used as the public key otherwise the retrieved value itself is used.
   - `{String} expected_origin` The expected origin that the browser authenticator has signed over.
   - `{String} expected_factor` Which factor is expected for the assertion. Valid values are `first`, `second` or `either`. 
@@ -326,7 +295,7 @@ It must have the following properties:
       - `{String(base64url)|ArrayBuffer} signature` The [signature](https://www.w3.org/TR/webauthn/#dom-authenticatorassertionresponse-signature) returned by the authenticator, signed using the private key which corresponds to the public key retrieved using `issuer_id`.
       - `{String(base64url)|ArrayBuffer} [userHandle]` The [user handle](https://www.w3.org/TR/webauthn/#dom-authenticatorassertionresponse-userhandle) returned by the authenticator in the browser, if it returned one.
 
-@param {Array} allowed_algs This is passed to [node-jsjws](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key-allowed_algs) and specifies the algorithms expected to be used to sign `authz_token`.
+@param {Array} algorithms This is passed to [`jose`](https://github.com/panva/jose/blob/master/docs/README.md#jwtverifytoken-keyorstore-options) and specifies the algorithms expected to be used to sign `authz_token`. If you pass `undefined` then all algorithms available on the public key are allowed. Note this parameter is ignored if `config.WEBAUTHN_MODE` was passed truthy to [`module.exports`](#moduleexportsconfig-cb).
 
 @param {Function} cb Function called with the result of authorizing the token. It will receive the following arguments:
 - `{Object} err` If authorization fails for some reason (e.g. the token isn't valid) then details of the failure, otherwise `null`.
@@ -337,79 +306,45 @@ It must have the following properties:
 
 - `{String} rev` Revision string for the public key used to verify the token. You can use this to identify tokens that become invalid when a [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) event occurs for the same issuer but with a different revision string.
 
-- `{`[`Fido2AssertionResult`](https://apowers313.github.io/fido2-lib/Fido2AssertionResult.html)`} [assertion_result]` If `config.WEBAUTHN_MODE` was passed to [`module.exports`](#moduleexportsconfig-cb) then this contains the validated assertion.
+- `{`[`Fido2AssertionResult`](https://apowers313.github.io/fido2-lib/Fido2AssertionResult.html)`} [assertion_result]` If `config.WEBAUTHN_MODE` was passed truthy to [`module.exports`](#moduleexportsconfig-cb) then this contains the validated assertion.
 */
-AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
+AuthorizeJWT.prototype.authorize = function (authz_token, algorithms, cb)
 {
-    var ths = this, challenge;
-
     if (!authz_token)
     {
         return cb(new Error('no authorization token'));
     }
 
-    function verify(uri, rev, assertion_response)
-    {
-        var jwt, header, payload, issuer_id, allowed_algs2;
+    var ths = this;
 
-        if (authz_token.parsedJWS)
-        {
-            jwt = authz_token;
-            authz_token = jwt.parsedJWS.si + '.' + jwt.parsedJWS.sigvalB64U;
-        }
-        else
-        {
-            jwt = new jsjws.JWT();
-        }
+    if (!this._config.WEBAUTHN_MODE)
+    {
+        let header, payload;
 
         try
         {
-            // Don't verify signature now - we do it below if not in anonymous
-            // mode. We have to allow the 'none' alg because we're passing a
-            // null key. But we check for 'none' algs in the header explicitly
-            // later.
-            allowed_algs2 = allowed_algs.concat('none');
-            jwt.verifyJWTByKey(authz_token, ths._config, null, allowed_algs2);
+            // Decode the token to get the issuer
+            ({ header, payload } = JWT.decode(authz_token, { complete: true }));
         }
         catch (ex)
         {
             return cb(ex);
         }
 
-        header = jwt.getParsedHeader();
-        payload = jwt.getParsedPayload();
-
-        if (ths._config.WEBAUTHN_MODE)
-        {
-            if (payload && payload.iss)
-            {
-                return cb(new Error('issuer found in webauthn mode'));
-            }
-
-            if (header.alg !== 'none')
-            {
-                return cb(new Error('signed token supplied in webauthn mode'));
-            }
-        }
-
-        if (ths._config.ANONYMOUS_MODE || ths._config.WEBAUTHN_MODE)
-        {
-            return ths._validate_token(payload, uri, rev, assertion_response, cb);
-        }
-
+        // Check the token has an issuer
         if (!(payload && payload.iss))
         {
             return cb(new Error('no issuer found in authorization token'));
         }
 
-        issuer_id = payload.iss;
-
-        if (header.alg === 'none')
+        // Check the token has a signing algorithm
+        if (!(header && (header.alg !== 'none')))
         {
-            return cb(new Error('anonymous token received but not in anonymous mode'));
+            return cb(new Error('unsigned token received'));
         }
 
-        ths.keystore.get_pub_key_by_issuer_id(issuer_id, function (err, pub_key, uri, rev)
+        // Get the public key for the issuer
+        return ths.keystore.get_pub_key_by_issuer_id(payload.iss, function (err, pub_key, uri, rev)
         {
             if (err)
             {
@@ -418,27 +353,43 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
 
             if (!pub_key)
             {
-                return cb(new Error('no public key found for issuer ID ' + issuer_id));
+                return cb(new Error('no public key found for issuer ID ' + payload.iss));
             }
-
-            pub_key = jsjws.createPublicKey(pub_key.pub_key || pub_key, 'utf8');
 
             try
             {
-                jwt.verifyJWTByKey(authz_token, ths._config, pub_key, allowed_algs);
+                // Import the public key
+                pub_key = JWK.asKey(pub_key.pub_key || pub_key);
+
+                // Verify the token with the public key
+                payload = JWT.verify(authz_token, pub_key, Object.assign({}, ths._config, { algorithms }));
             }
             catch (ex)
             {
                 return cb(ex);
             }
 
+            // Perform our optional checks
             ths._validate_token(payload, uri, rev, null, cb);
         });
     }
 
-    function webauthn(challenge)
+    function webauthn(assertion_obj)
     {
-        ths.keystore.get_pub_key_by_issuer_id(authz_token.issuer_id, function (err, pub_key, uri, rev)
+        let challenge;
+
+        try
+        {
+            // Decode the challenge
+            challenge = JSON.parse(Buffer.from(assertion_obj.assertion.response.clientDataJSON, 'base64')).challenge;
+        }
+        catch (ex)
+        {
+            return cb(ex);
+        }
+
+        // Get the public key for the issuer ID
+        ths.keystore.get_pub_key_by_issuer_id(assertion_obj.issuer_id, function (err, pub_key, uri, rev)
         {
             if (err)
             {
@@ -452,67 +403,65 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
 
             (async function ()
             {
-                var assertion_response;
+                let header, payload, assertion_response;
 
                 try
                 {
+                    // Verify the assertion with the public key
                     assertion_response = await ths._fido2lib.assertionResult(
-                        authz_token.assertion,
+                        assertion_obj.assertion,
                         {
-                            challenge: challenge,
-                            origin: authz_token.expected_origin,
-                            factor: authz_token.expected_factor,
+                            challenge,
+                            origin: assertion_obj.expected_origin,
+                            factor: assertion_obj.expected_factor,
                             publicKey: pub_key.pub_key || pub_key,
-                            prevCounter: authz_token.prev_counter,
-                            userHandle: authz_token.expected_user_handle === undefined ? null : authz_token.expected_user_handle
+                            prevCounter: assertion_obj.prev_counter,
+                            userHandle: assertion_obj.expected_user_handle === undefined ? null : assertion_obj.expected_user_handle
                         });
+
+                    // Decode the token from the verified challenge
+                    const jwt = Buffer.from(
+                        assertion_response.clientData.get('challenge'),
+                        'base64').toString();
+
+                    // Verify the token. We expect it to be unsigned.
+                    // We checked the WebAuthn assertion was signed by the
+                    // public key above.
+                    ({ header, payload } = JWT.verify(jwt, JWK.None, { complete: true }));
                 }
                 catch (ex)
                 {
                     return cb(ex);
                 }
 
-                authz_token = Buffer.from(assertion_response.clientData.get('challenge'), 'base64').toString();
+                // Check the token doesn't have an issuer
+                if (payload && payload.iss)
+                {
+                    return cb(new Error('issuer found in webauthn mode'));
+                }
 
-                verify(uri, rev, assertion_response);
+                // Double-check the token was unsigned, should be caught by
+                // JWT.verify above because JWK.None errors for signed tokens.
+                /* istanbul ignore if */
+                if (header && (header.alg !== 'none'))
+                {
+                    return cb(new Error('signed token supplied in webauthn mode'));
+                }
+
+                // Perform our optional checks
+                ths._validate_token(payload, uri, rev, assertion_response, cb);
             })();
         });
     }
 
-    function maybe_webauthn()
-    {
-        try
-        {
-            challenge = JSON.parse(Buffer.from(authz_token.assertion.response.clientDataJSON, 'base64')).challenge;
-        }
-        catch (ex)
-        {
-            return cb(ex);
-        }
-
-        if (!ths._config.ANONYMOUS_MODE)
-        {
-            return webauthn(challenge);
-        }
-
-        authz_token = Buffer.from(challenge, 'base64').toString();
-        verify(null, null, null);
-    }
-
-    if (!this._config.WEBAUTHN_MODE)
-    {
-        return verify(null, null, null);
-    }
-
-    function after_complete(err, webauthn_token)
+    function after_complete(err, assertion_obj)
     {
         if (err)
         {
             return cb(err);
         }
 
-        authz_token = webauthn_token;
-        maybe_webauthn();
+        webauthn(assertion_obj);
     }
 
     if (authz_token.split)
@@ -524,6 +473,7 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
 
         try
         {
+            // Get the assertion info from the string
             const [issuer_id,
                    id,
                    clientDataJSON,
@@ -531,9 +481,10 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
                    signature,
                    userHandle] = authz_token.split('.');
 
+            // Allow the application to complete the assertion info
             return this._config.complete_webauthn_token(
             {
-                issuer_id: issuer_id,
+                issuer_id,
                 assertion: {
                     id: ab64(id),
                     response: {
@@ -553,11 +504,12 @@ AuthorizeJWT.prototype.authorize = function (authz_token, allowed_algs, cb)
 
     if (this._config.complete_webauthn_token)
     {
+        // Allow the application to complete the assertion info
         return this._config.complete_webauthn_token(
             Object.assign({}, authz_token),
             after_complete);
     }
 
-    maybe_webauthn();
+    webauthn(authz_token);
 };
 

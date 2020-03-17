@@ -1,3 +1,0 @@
-[submodule "test/fixtures/jsrsasign"]
-	path = test/fixtures/jsrsasign
-	url = https://github.com/kjur/jsrsasign.git

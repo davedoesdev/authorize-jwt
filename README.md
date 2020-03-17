@@ -2,10 +2,9 @@
 
 Simple [JSON Web Token](http://self-issued.info/docs/draft-ietf-oauth-json-web-token.html) authorization module for Node.js.
 
-- Uses [`node-jsjws`](https://github.com/davedoesdev/node-jsjws) to perform verification of tokens.
+- Uses [`jose`](https://github.com/panva/jose) to perform verification of tokens.
 - Uses [`pub-keystore`](https://github.com/davedoesdev/pub-keystore) to retrieve and manage token issuers' public keys.
-- Adds extra checks for token audience and maximum expiry time.
-- Optional 'anonymous' mode where token signatures aren't verified.
+- Adds extra check for maximum expiry time.
 - Extracts tokens from HTTP Authorization (Basic or Bearer) headers or query strings.
 - Unit tests with 100% code coverage.
 - Support for the [Web Authentication](https://www.w3.org/TR/webauthn/) browser API.
@@ -23,80 +22,69 @@ The API is described [here](#tableofcontents).
 ## Example
 
 ```javascript
-var authorize_jwt = require('authorize-jwt'),
-    http = require('http'),
-    assert = require('assert'),
-    jsjws = require('jsjws'),
-    priv_key = jsjws.generatePrivateKey(2048, 65537),
-    pub_key = priv_key.toPublicPem('utf8'),
-    the_uri = 'mailto:example@davedoesdev.com',
-    audience = 'urn:authorize-jwt:example';
+const authorize_jwt = require('authorize-jwt');
+const http = require('http');
+const assert = require('assert');
+const { JWK, JWT } = require('jose');
+const priv_key = JWK.generateSync('OKP');
+const pub_key = priv_key.toPEM();
+const the_uri = 'mailto:example@davedoesdev.com';
+const audience = 'urn:authorize-jwt:example';
 
 // create authorization object
-authorize_jwt(
-{
+authorize_jwt({
     db_type: 'pouchdb',
     db_for_update: true, // we're going to update a public key
-    jwt_audience_uri: audience,
-    jwt_max_token_expiry: 60
-}, function (err, authz)
-{
+    max_token_expiry: 60
+}, function (err, authz) {
     assert.ifError(err);
 
     var the_issuer_id, the_rev, change_rev;
 
-    function doit()
-    {
+    function doit() {
         assert.equal(the_rev, change_rev);
 
         // create and sign a JWT
-        var exp = new Date(), the_token, http_server;
-        exp.setMinutes(exp.getMinutes() + 1);
-        the_token = new jsjws.JWT().generateJWTByKey({ alg: 'PS256' },
-        {
-            iss: the_issuer_id,
-            aud: audience,
+        const the_token = JWT.sign({
             foo: 'bar'
-        }, exp, priv_key);
+        }, priv_key, {
+            algorithm: 'EdDSA',
+            issuer: the_issuer_id,
+            audience,
+            expiresIn: '1m'
+        });
 
         // send and receive the token via HTTP Basic Auth
-        http_server = http.createServer(function (req, res)
-        {
-            authz.get_authz_data(req, function (err, info, token)
-            {
+        const http_server = http.createServer(function (req, res) {
+            authz.get_authz_data(req, function (err, info, token) {
                 assert.ifError(err);
                 assert.equal(info, 'test');
                 assert.equal(token, the_token);
 
                 // authorize the token
-                authz.authorize(token, ['PS256'], function (err, payload, uri, rev)
-                {
+                authz.authorize(token, ['EdDSA'], function (err, payload, uri, rev) {
                     assert.ifError(err);
                     assert.equal(uri, the_uri);
                     assert.equal(rev, the_rev);
                     assert.equal(payload.foo, 'bar');
                     res.end();
-                    http_server.close();
-                    console.log('done')
+                    http_server.close(cb);
                 });
             });
-        }).listen(6000, '127.0.0.1', function ()
-        {
+        }).listen(6000, '127.0.0.1', function () {
             http.request({ hostname: '127.0.0.1', port: 6000, auth: 'test:' + the_token }).end();
         });
     }
 
     // just to demonstrate change events
-    authz.keystore.once('change', function (uri, rev)
-    {
+    authz.keystore.once('change', function (uri, rev) {
         assert.equal(uri, the_uri);
         change_rev = rev;
         if (the_rev) { doit(); }
     });
 
     // add public key to the store
-    authz.keystore.add_pub_key(the_uri, pub_key, function (err, issuer_id, rev)
-    {
+    authz.keystore.add_pub_key(the_uri, pub_key, function (err, issuer_id, rev) {
         assert.ifError(err);
         the_issuer_id = issuer_id;
         the_rev = rev;
@@ -145,7 +133,7 @@ _Source: [index.js](/index.js)_
 
 - <a name="toc_moduleexportsconfig-cb"></a><a name="toc_module"></a>[module.exports](#moduleexportsconfig-cb)
 - <a name="toc_authorizejwtprototypeget_authz_datareq-cb"></a><a name="toc_authorizejwtprototype"></a><a name="toc_authorizejwt"></a>[AuthorizeJWT.prototype.get_authz_data](#authorizejwtprototypeget_authz_datareq-cb)
-- <a name="toc_authorizejwtprototypeauthorizeauthz_token-allowed_algs-cb"></a>[AuthorizeJWT.prototype.authorize](#authorizejwtprototypeauthorizeauthz_token-allowed_algs-cb)
+- <a name="toc_authorizejwtprototypeauthorizeauthz_token-algorithms-cb"></a>[AuthorizeJWT.prototype.authorize](#authorizejwtprototypeauthorizeauthz_token-algorithms-cb)
 
 <a name="module"></a>
 
@@ -155,22 +143,18 @@ _Source: [index.js](/index.js)_
 
 **Parameters:**
 
-- `{Object} config` Configures the authorizer. `config` is passed down to [`pub-keystore`](https://github.com/davedoesdev/pub-keystore#moduleexportsconfig-cb), [`node-jsjws`](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key-allowed_algs) and [`fido2-lib`](https://apowers313.github.io/fido2-lib/Fido2Lib.html). The following extra properties are supported:
-  - `{String} [jwt_audience_uri]` If set then all JSON Web Tokens must have an `aud` property in their payload which exactly equals `jwt_audience_uri`. Defaults to `undefined`.
+- `{Object} config` Configures the authorizer. `config` is passed down to [`pub-keystore`](https://github.com/davedoesdev/pub-keystore#moduleexportsconfig-cb), [`jose`](https://github.com/panva/jose/blob/master/docs/README.md#jwtverifytoken-keyorstore-options) and [`fido2-lib`](https://apowers313.github.io/fido2-lib/Fido2Lib.html). The following extra properties are supported:
+  - `{Integer} [max_token_expiry]` If set then all JSON Web Tokens must expire sooner than `max_token_expiry` seconds in the future (from the time they're presented). Defaults to `undefined`.
 
-  - `{Integer} [jwt_max_token_expiry]` If set then all JSON Web Tokens must expire sooner than `jwt_max_token_expiry` seconds in the future (from the time they're presented). Defaults to `undefined`.
+  - `{Boolean} [WEBAUTHN_MODE]` If truthy then instead of verifying standalone JSON Web Tokens, the authorizer will verify signed [assertions](https://www.w3.org/TR/webauthn/#authenticatorassertionresponse) generated by the [Web Authentication](https://www.w3.org/TR/webauthn/) browser API. The challenge contained in each assertion's client data must be an _unsigned_ JSON Web Token. Defaults to `false`.
 
-  - `{Boolean} [ANONYMOUS_MODE]` Whether to authorize all JSON Web Tokens without verifying their signatures. Note that tokens must always pass the [basic checks](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key-allowed_algs) performed by `node-jsjws`. Defaults to `false`.
+  - `{Function} [complete_webauthn_token]` This applies only if `WEBAUTHN_MODE` is truthy and is mandatory if you pass strings to [`authorize`](#authorizejwtprototypeauthorizeauthz_token-algorithms-cb). It will receive the following arguments:
 
-  - `{Boolean} [WEBAUTHN_MODE]` If set to `true` then instead of verifying standalone JSON Web Tokens, the authorizer will verify signed [assertions](https://www.w3.org/TR/webauthn/#authenticatorassertionresponse) generated by the [Web Authentication](https://www.w3.org/TR/webauthn/) browser API. The challenge contained in each assertion's client data must be an _unsigned_ JSON Web Token. Defaults to `false`.
-
-  - `{Function} [complete_webauthn_token]` This applies only if `WEBAUTHN_MODE` is true and is mandatory if you pass strings to [`authorize`](#authorizejwtprototypeauthorizeauthz_token-allowed_algs-cb). It will receive the following arguments:
-
-    - `{Object} partial_webauthn_token`. This is a partially-complete Web Authentication assertion containing `issuer_id` and `assertion` properties (see [`authorize`](#authorizejwtprototypeauthorizeauthz_token-allowed_algs-cb) for a description).
+    - `{Object} partial_webauthn_token`. This is a partially-complete Web Authentication assertion containing `issuer_id` and `assertion` properties (see [`authorize`](#authorizejwtprototypeauthorizeauthz_token-algorithms-cb) for a description).
     - `{Function} cb` Call this function when you have filled in the remaining properties. It takes the following arguments:
 
-      - `{Object} err` If err error occurred then pass details of the error, otherwise pass `null`.
-      - `{Object} webauthn_token` This should have the same properties as `partial_webauthn_token` plus `expected_factor`, `expected_origin`, `prev_counter` and `expected_user_handle` (see [`authorize`](#authorizejwtprototypeauthorizeauthz_token-allowed_algs-cb)). It's safe to modify `partial_webauthn_token` and then pass it here.
+      - `{Object} err` If an error occurred then pass details of the error, otherwise pass `null`.
+      - `{Object} webauthn_token` This should have the same properties as `partial_webauthn_token` plus `expected_factor`, `expected_origin`, `prev_counter` and `expected_user_handle` (see [`authorize`](#authorizejwtprototypeauthorizeauthz_token-algorithms-cb)). It's safe to modify `partial_webauthn_token` and then pass it here.
 
   - `{PubKeyStore} [keystore]` If you have a pre-existing [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore), pass it here. The authorizer will use it to look up the public keys of token issuers. The default is to make a new one by calling [`pub-keystore`](https://github.com/davedoesdev/pub-keystore#moduleexportsconfig-cb).
 
@@ -179,7 +163,7 @@ _Source: [index.js](/index.js)_
 
   - `{AuthorizeJWT} authz` The `AuthorizeJWT` object. As well as `AuthorizeJWT`'s prototype methods, it has the following property:
 
-    - `{PubKeyStore} keystore` The [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore) object that the authorizer is using to look up the public keys of token issuers. For example, you could listen to [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) events so you know that previously verified tokens are invalid. Note: If you pass `config.ANONYMOUS_MODE` as `true` then `keystore` will be `undefined`.
+    - `{PubKeyStore} keystore` The [`PubKeyStore`](https://github.com/davedoesdev/pub-keystore#pubkeystore) object that the authorizer is using to look up the public keys of token issuers. For example, you could listen to [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) events so you know that previously verified tokens are invalid.
 
 <sub>Go: [TOC](#tableofcontents) | [module](#toc_module)</sub>
 
@@ -206,30 +190,27 @@ _Source: [index.js](/index.js)_
 
 <sub>Go: [TOC](#tableofcontents) | [AuthorizeJWT.prototype](#toc_authorizejwtprototype)</sub>
 
-## AuthorizeJWT.prototype.authorize(authz_token, allowed_algs, cb)
+## AuthorizeJWT.prototype.authorize(authz_token, algorithms, cb)
 
 > Authorizes (or not) a JSON Web Token.
 
-The token must pass all the [tests made by node-jsjws](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key-allowed_algs) and
+The token must pass all the tests made by [`jose`](https://github.com/panva/jose/blob/master/docs/README.md#jwtverifytoken-keyorstore-options) and
 
-- If `config.jwt_audience_uri` was passed to [`module.exports`](#moduleexportsconfig-cb) then the token's payload must have a matching `aud` property.
-
-- If `config.jwt_max_token_expiry` was passed to [`module.exports`](#moduleexportsconfig-cb) then the token must expire sooner than `config.jwt_max_token_expiry` seconds in the future.
+- If `config.max_token_expiry` was passed to [`module.exports`](#moduleexportsconfig-cb) then the token must expire sooner than `config.max_token_expiry` seconds in the future.
 
 **Parameters:**
 
-- `{String | JWT | Object} authz_token` The token to authorize.
+- `{String | Object} authz_token` The token to authorize.
 
 
-  - If `config.WEBAUTHN_MODE` was _not_ passed to [`module.exports`](#moduleexportsconfig-cb) then `authz_token` must be a JWT.
+  - If `config.WEBAUTHN_MODE` was _not_ passed truthy to [`module.exports`](#moduleexportsconfig-cb) then `authz_token` must be a JWT string.
 
-    - Unless `config.ANONYMOUS_MODE` was passed to [`module.exports`](#moduleexportsconfig-cb) then the `iss` property in the token's payload is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb).
-      - If the retrieved value has a `pub_key` property then that is used as the public key otherwise the retrieved value itself is used.
-    - If you don't pass the token as a string then it must be a [`node_jsjws.JWT`](https://github.com/davedoesdev/node-jsjws#jwt) object, pre-processed by calling [`processJWS`](https://github.com/davedoesdev/node-jsjws#jwsprototypeprocessjwsjws).
+    - The `iss` property in the token's payload is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb).
+    - If the retrieved value has a `pub_key` property then that is used as the public key otherwise the retrieved value itself is used.
 
-  - If `config.WEBAUTHN_MODE` _was_ passed to [`module.exports`](#moduleexportsconfig-cb) then `authz_token` must be a [Web Authentication](https://www.w3.org/TR/webauthn/) assertion. It must either be an object with the following properties or a string of the form `issuer_id.id.clientDataJSON.authenticatorData.signature.userHandle` - i.e. some of the properties described below separated by a period. In the latter case, the remaining properties are obtained by calling `config.complete_webauthn_token` (see [`module.exports`](#moduleexportsconfig-cb)).
+  - If `config.WEBAUTHN_MODE` _was_ passed truthy to [`module.exports`](#moduleexportsconfig-cb) then `authz_token` must be a [Web Authentication](https://www.w3.org/TR/webauthn/) assertion. It must either be an object with the following properties or a string of the form `issuer_id.id.clientDataJSON.authenticatorData.signature.userHandle` - i.e. some of the properties described below separated by a period. In the latter case, the remaining properties are obtained by calling `config.complete_webauthn_token` (see [`module.exports`](#moduleexportsconfig-cb)).
 
-    - `{String} issuer_id` This is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb), unless `config.ANONYMOUS_MODE` was passed to [`module.exports`](#moduleexportsconfig-cb).
+    - `{String} issuer_id` This is used to retrieve a public key from `AuthorizeJWT`'s key store using [`PubKeyStore.prototype_get_pub_key_by_issuer_id`](https://github.com/davedoesdev/pub-keystore#pubkeystoreprototypeget_pub_key_by_issuer_idissuer_id-cb).
       - If the retrieved value has a `pub_key` property then that is used as the public key otherwise the retrieved value itself is used.
     - `{String} expected_origin` The expected origin that the browser authenticator has signed over.
     - `{String} expected_factor` Which factor is expected for the assertion. Valid values are `first`, `second` or `either`. 
@@ -246,7 +227,7 @@ It must have the following properties:
         - `{String(base64url)|ArrayBuffer} signature` The [signature](https://www.w3.org/TR/webauthn/#dom-authenticatorassertionresponse-signature) returned by the authenticator, signed using the private key which corresponds to the public key retrieved using `issuer_id`.
         - `{String(base64url)|ArrayBuffer} [userHandle]` The [user handle](https://www.w3.org/TR/webauthn/#dom-authenticatorassertionresponse-userhandle) returned by the authenticator in the browser, if it returned one.
 
-- `{Array} allowed_algs` This is passed to [node-jsjws](https://github.com/davedoesdev/node-jsjws#jwtprototypeverifyjwtbykeyjwt-options-key-allowed_algs) and specifies the algorithms expected to be used to sign `authz_token`.
+- `{Array} algorithms` This is passed to [`jose`](https://github.com/panva/jose/blob/master/docs/README.md#jwtverifytoken-keyorstore-options) and specifies the algorithms expected to be used to sign `authz_token`. If you pass `undefined` then all algorithms available on the public key are allowed. Note this parameter is ignored if `config.WEBAUTHN_MODE` was passed truthy to [`module.exports`](#moduleexportsconfig-cb).
 - `{Function} cb` Function called with the result of authorizing the token. It will receive the following arguments:
   - `{Object} err` If authorization fails for some reason (e.g. the token isn't valid) then details of the failure, otherwise `null`.
 
@@ -256,7 +237,7 @@ It must have the following properties:
 
   - `{String} rev` Revision string for the public key used to verify the token. You can use this to identify tokens that become invalid when a [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) event occurs for the same issuer but with a different revision string.
 
-  - `{`[`Fido2AssertionResult`](https://apowers313.github.io/fido2-lib/Fido2AssertionResult.html)`} [assertion_result]` If `config.WEBAUTHN_MODE` was passed to [`module.exports`](#moduleexportsconfig-cb) then this contains the validated assertion.
+  - `{`[`Fido2AssertionResult`](https://apowers313.github.io/fido2-lib/Fido2AssertionResult.html)`} [assertion_result]` If `config.WEBAUTHN_MODE` was passed truthy to [`module.exports`](#moduleexportsconfig-cb) then this contains the validated assertion.
 
 <sub>Go: [TOC](#tableofcontents) | [AuthorizeJWT.prototype](#toc_authorizejwtprototype)</sub>
 

@@ -15,7 +15,7 @@ function BufferToArrayBuffer(buf)
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
-let authz, authz_anon;
+let authz;
 
 function complete_webauthn_token(webauthn_token, cb)
 {
@@ -32,15 +32,8 @@ before(async function ()
         db_type: 'pouchdb',
         db_for_update: true,
         WEBAUTHN_MODE: true,
-        jwt_audience_uri: audience,
-        complete_webauthn_token: complete_webauthn_token
-    });
-
-    authz_anon = await authorize_jwt({
-        WEBAUTHN_MODE: true,
-        ANONYMOUS_MODE: true,
-        jwt_audience_uri: audience,
-        complete_webauthn_token: complete_webauthn_token
+        audience,
+        complete_webauthn_token
     });
 });
 
@@ -136,7 +129,7 @@ describe('WebAuthn', function ()
                 user: {
                     name: 'test',
                     displayName: 'Test',
-                    id: new TextEncoder('utf-8').encode('test')
+                    id: new TextEncoder().encode('test')
                 },
                 challenge: Uint8Array.from(options.challenge),
                 pubKeyCredParams: [{
@@ -219,7 +212,38 @@ describe('WebAuthn', function ()
 
             const assertion = await executeAsync(async (options, cred_id) =>
             {
-                function generateJWT(claims, expires)
+                function b64url(s)
+                {
+                    return btoa(s).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+                }
+
+                async function jwt_encode(header, payload, secret)
+                {
+                    const unsigned_token = b64url(JSON.stringify(header)) + '.' +
+                                           b64url(JSON.stringify(payload));
+
+                    const encoder = new TextEncoder();
+                    const signature = secret ?
+                        b64url(new Uint8Array(await crypto.subtle.sign(
+                            'HMAC',
+                            await crypto.subtle.importKey(
+                                'raw',
+                                encoder.encode(secret),
+                                {
+                                    name: 'HMAC',
+                                    hash: 'SHA-256'
+                                },
+                                false,
+                                ['sign']),
+                            encoder.encode(unsigned_token)))
+                                .reduce((r, b) => (r.push(String.fromCharCode(b)), r), [])
+                                .join('')) :
+                        '';
+
+                    return unsigned_token + '.' + signature;
+                }
+
+                async function generateJWT(claims, expires)
                 {
                     const header = {
                               alg: options.sign_jwt ? 'HS256' : 'none',
@@ -240,11 +264,7 @@ describe('WebAuthn', function ()
                         new_claims.exp = Math.floor(expires.getTime() / 1000);
                     }
 
-                    return KJUR.jws.JWS.sign(
-                        null,
-                        header,
-                        new_claims,
-                        options.sign_jwt ? 'foobar' : undefined);
+                    return await jwt_encode(header, new_claims, options.sign_jwt ? 'foobar' : null);
                 }
 
                 const payload = {
@@ -264,10 +284,11 @@ describe('WebAuthn', function ()
                     }
                 }
 
-                const jwt = generateJWT(payload, expires);
+                const jwt = options.malformed_token ? 'foobar' :
+                    await generateJWT(payload, expires);
 
                 const assertion = await navigator.credentials.get({ publicKey: {
-                    challenge: new TextEncoder('utf-8').encode(jwt),
+                    challenge: new TextEncoder().encode(jwt),
                     allowCredentials: [{
                         id: Uint8Array.from(cred_id),
                         type: 'public-key'
@@ -385,6 +406,10 @@ describe('WebAuthn', function ()
 
                     token = token.join('.');
                 }
+                else if (options.malformed_assertion_obj)
+                {
+                    token = 'foobar';
+                }
                 else
                 {
                     token = {
@@ -406,17 +431,8 @@ describe('WebAuthn', function ()
                 authz._config.complete_webauthn_token = orig_complete_webauthn_token;
             }
 
-            if (authz === authz_anon)
-            {
-                expect(info.uri).to.equal(null);
-                expect(info.assertion_response).to.equal(null);
-            }
-            else
-            {
-                expect(info.uri).to.equal(user_uri);
-                expect(info.assertion_response.clientData.get('challenge')).to.equal(client_jwt);
-            }
-
+            expect(info.uri).to.equal(user_uri);
+            expect(info.assertion_response.clientData.get('challenge')).to.equal(client_jwt);
             expect(info.payload.foo).to.equal(90);
         }
 
@@ -429,130 +445,145 @@ describe('WebAuthn', function ()
             }, options));
         }
 
-        for (const az of [authz, authz_anon])
+        await gen_and_verify(authz);
+
+        issuer_id = await add_pub_key(
+            user_uri,
+            cred_response.authnrData.get('credentialPublicKeyPem'));
+
+        await gen_and_verify(authz);
+
+        try
         {
-            await gen_and_verify(az);
-
-            issuer_id = await add_pub_key(
-                user_uri,
-                cred_response.authnrData.get('credentialPublicKeyPem'));
-
-            await gen_and_verify(az);
-
-            try
-            {
-                await gen_and_verify(az, {audience: 'foobar'});
-            }
-            catch (ex)
-            {
-                expect(ex.message).to.equal('unrecognized authorization token audience: foobar');
-            }
-
-            try
-            {
-                await gen_and_verify(az, {issuer: 'foobar'});
-            }
-            catch (ex)
-            {
-                expect(ex.message).to.equal('issuer found in webauthn mode');
-            }
-
-            try
-            {
-                await gen_and_verify(az, {expire: false});
-            }
-            catch (ex)
-            {
-                expect(ex.message).to.equal('no expires claim');
-            }
-
-            try
-            {
-                await gen_and_verify(az, {modify_sig: true});
-            }
-            catch (ex)
-            {
-                expect(ex.message).to.equal('signature validation failed');
-            }
-
-            try
-            {
-                await gen_and_verify(az, {wrong_issuer: true});
-            }
-            catch (ex)
-            {
-                expect(ex.message).to.equal('no public key found for issuer ID foobar');
-            }
-
-            try
-            {
-                await gen_and_verify(az, {modify_client_data: true});
-            }
-            catch (ex)
-            {
-                expect(ex.message).to.be.oneOf([
-                    'Unexpected token a in JSON at position 0',
-                    'Unexpected token j in JSON at position 0'
-                ]);
-            }
-
-            try
-            {
-                await gen_and_verify(az, {sign_jwt: true});
-            }
-            catch (ex)
-            {
-                expect(ex.message).to.equal('algorithm not allowed: HS256');
-            }
-
-            try
-            {
-                await gen_and_verify(az, {sign_jwt: true, allowed_algs: ['HS256']});
-            }
-            catch (ex)
-            {
-                expect(ex.message).to.equal('signed token supplied in webauthn mode');
-            }
-
-            try
-            {
-                await gen_and_verify(az, {expire_immediately: true});
-            }
-            catch (ex)
-            {
-                expect(ex.message).to.equal('expired');
-            }
-
-            try
-            {
-                await gen_and_verify(az, {no_complete_webauthn_token: true});
-            }
-            catch (ex)
-            {
-                expect(ex.message).to.equal('no config.complete_webauthn_token');
-            }
-
-            try
-            {
-                await gen_and_verify(az, {complete_error: true});
-            }
-            catch (ex)
-            {
-                expect(ex.message).to.equal('error in completion');
-            }
-
-            try
-            {
-                await gen_and_verify(az, {split_error: true});
-            }
-            catch (ex)
-            {
-                expect(ex.message).to.equal('error in split');
-            }
-
-            await gen_and_verify(az, {no_user_handle: true});
-            await gen_and_verify(az, {empty_user_handle: true});
+            await gen_and_verify(authz, {audience: 'foobar'});
         }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('unrecognized authorization token audience: foobar');
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {issuer: 'foobar'});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('issuer found in webauthn mode');
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {expire: false});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('no expires claim');
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {modify_sig: true});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('signature validation failed');
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {wrong_issuer: true});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('no public key found for issuer ID foobar');
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {modify_client_data: true});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.be.oneOf([
+                'Unexpected token a in JSON at position 0',
+                'Unexpected token j in JSON at position 0'
+            ]);
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {sign_jwt: true});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('the key does not support HS256 verify algorithm');
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {sign_jwt: true, allowed_algs: ['HS256']});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('the key does not support HS256 verify algorithm');
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {expire_immediately: true});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('"exp" claim timestamp check failed');
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {no_complete_webauthn_token: true});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('no config.complete_webauthn_token');
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {complete_error: true});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('error in completion');
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {split_error: true});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('error in split');
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {malformed_token: true});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('JWTs must have three components');
+        }
+
+        try
+        {
+            await gen_and_verify(authz, {malformed_assertion_obj: true});
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('The first argument must be of type string or an instance of Buffer, ArrayBuffer, or Array or an Array-like Object. Received undefined');
+        }
+
+        await gen_and_verify(authz, {no_user_handle: true});
+        await gen_and_verify(authz, {empty_user_handle: true});
 
         const close = promisify(cb =>
         {
