@@ -37,35 +37,9 @@ before(async function ()
     });
 });
 
-let io;
-
-if (process.env.CI === 'true')
-{
-    global.browser = {
-        setTimeout()
-        {
-        },
-
-        async url()
-        {
-        }
-    };
-
-    io = JSON.parse(fs.readFileSync(path.join(__dirname, 'io.json')));
-}
-else
-{
-    io = [];
-}
-
 async function executeAsync(f, ...args)
 {
-    if (process.env.CI === 'true')
-    {
-        return JSON.parse(io.shift()).res;
-    }
-
-    const r = await browser.executeAsync(function (f, ...args)
+    return await browser.executeAsync(function (f, ...args)
     {
         (async function ()
         {
@@ -80,9 +54,6 @@ async function executeAsync(f, ...args)
             }
         })();
     }, f.toString(), ...args);
-
-    io.push(JSON.stringify({ req: args, res: r }));
-    return r;
 }
 
 describe('WebAuthn', function ()
@@ -112,11 +83,6 @@ describe('WebAuthn', function ()
 
         let challenge_buf = Buffer.from(options.challenge);
         expect(challenge_buf.equals(Buffer.from(options2.challenge))).to.be.false;
-
-        if (process.env.CI === 'true')
-        {
-            challenge_buf = Buffer.from(JSON.parse(io[0]).req[0].challenge);
-        }
 
         // allow challenge to be sent to browser
         options.challenge = Array.from(challenge_buf);
@@ -354,15 +320,6 @@ describe('WebAuthn', function ()
                 assertion.response.clientDataJSON = 'a' + assertion.response.clientDataJSON;
             }
 
-            const orig_getTime = Date.prototype.getTime;
-            if (process.env.CI === 'true')
-            {
-                Date.prototype.getTime = function ()
-                {
-                    return JSON.parse(Buffer.from(Buffer.from(client_jwt, 'base64').toString().split('.')[1], 'base64')).iat * 1000;
-                };
-            }
-
             const orig_complete_webauthn_token = authz._config.complete_webauthn_token;
             if (options.no_complete_webauthn_token)
             {
@@ -427,7 +384,6 @@ describe('WebAuthn', function ()
             }
             finally
             {
-                Date.prototype.getTime = orig_getTime;
                 authz._config.complete_webauthn_token = orig_complete_webauthn_token;
             }
 
@@ -599,11 +555,6 @@ describe('WebAuthn', function ()
         catch (ex)
         {
             expect(ex.message).to.equal('not_open');
-        }
-
-        if (process.env.CI !== 'true')
-        {
-            await writeFile(path.join(__dirname, 'io.json'), JSON.stringify(io));
         }
     });
 });

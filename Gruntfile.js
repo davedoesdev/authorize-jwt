@@ -13,9 +13,6 @@ module.exports = function (grunt)
             default: {
                 src: ['test/test_example.js', 'test/test_spec.js']
             },
-            webauthn: {
-                src: ['test/test_webauthn.js']
-            },
             options: {
                 timeout: 10000,
                 bail: true
@@ -67,8 +64,7 @@ module.exports = function (grunt)
 
     grunt.registerTask('lint', 'eslint');
     grunt.registerTask('test', 'mochaTest:default');
-    grunt.registerTask('test-webauthn', process.env.CI === 'true' ?
-            'mochaTest:webauthn' : 'bgShell:test_webauthn');
+    grunt.registerTask('test-webauthn', 'bgShell:test_webauthn');
     grunt.registerTask('docs', 'apidox');
     grunt.registerTask('coverage', ['bgShell:cover',
 								    'bgShell:cover_report',
