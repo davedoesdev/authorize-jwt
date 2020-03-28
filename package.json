@@ -1,7 +1,7 @@
 {
   "name": "authorize-jwt",
   "description": "Simple JSON Web Token authorization",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "homepage": "https://github.com/davedoesdev/authorize-jwt",
   "author": {
     "name": "David Halls",
@@ -36,7 +36,7 @@
     "@davedoesdev/fido2-lib": "^2.5.0",
     "basic-auth-parser": "^0.0.2",
     "jose": "^1.25.0",
-    "pub-keystore": "^4.0.1"
+    "pub-keystore": "^4.3.0"
   },
   "devDependencies": {
     "@wdio/cli": "^5.20.1",

@@ -359,7 +359,11 @@ AuthorizeJWT.prototype.authorize = function (authz_token, algorithms, cb)
             try
             {
                 // Import the public key
-                pub_key = JWK.asKey(pub_key.pub_key || pub_key);
+                pub_key = pub_key.pub_key || pub_key;
+                if (!JWK.isKey(pub_key))
+                {
+                    pub_key = JWK.asKey(pub_key);
+                }
 
                 // Verify the token with the public key
                 payload = JWT.verify(authz_token, pub_key, Object.assign({}, ths._config, { algorithms }));

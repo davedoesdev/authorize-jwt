@@ -18,12 +18,17 @@ var http = require('http'),
 
 function expr(v) { return v; }
 
-function toPEM(pub_key) {
-    return pub_key.type === 'secret' ? pub_key.toJWK(true) : pub_key.toPEM();
-}
-
 function setup(db_type, kty, alg, crvOrSize)
 {
+function serialize_key(priv_key) {
+    if (db_type === 'in-mem') {
+        return priv_key;
+    }
+    if (priv_key.type === 'secret') {
+        return priv_key.toJWK(true);
+    }
+    return priv_key.toPEM();
+}
 
 describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
 {
@@ -56,12 +61,12 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
         priv_key1 = JWK.generateSync(kty, crvOrSize, { alg });
         priv_key2 = JWK.generateSync(kty, crvOrSize, { alg });
 
-        var pub_key1 = toPEM(priv_key1),
-            pub_key2 = toPEM(priv_key2);
+        var pub_key1 = serialize_key(priv_key1),
+            pub_key2 = serialize_key(priv_key2);
 
         pub_keystore(
         {
-            db_type: db_type,
+            db_type,
             db_for_update: true,
             no_changes: true,
             username: 'admin',
@@ -69,6 +74,7 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
         }, function (err, ks)
         {
             if (err) { return cb(err); }
+            expect(ks.db_type).to.equal(db_type);
             ks_for_update = ks;
             ks_for_update.add_pub_key(uri1, pub_key1, function (err, issuer_id, rev)
             {
@@ -105,10 +111,12 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
             max_token_expiry: 60,
             keep_master_open: true,
             username: 'admin',
-            password: 'admin'
+            password: 'admin',
+            share_keys_with: ks_for_update
         }, function (err, the_authz)
         {
             if (err) { return cb(err); }
+            expect(the_authz.keystore.db_type).to.equal(db_type);
             authz = the_authz;
             cb();
         });
@@ -134,10 +142,12 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
             keep_master_open: true,
             clockTolerance: '1m',
             username: 'admin',
-            password: 'admin'
+            password: 'admin',
+            share_keys_with: ks_for_update
         }, function (err, the_authz)
         {
             if (err) { return cb(err); }
+            expect(the_authz.keystore.db_type).to.equal(db_type);
             skew_authz = the_authz;
             cb();
         });
@@ -152,15 +162,17 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
     {
         authorize_jwt(
         {
-            db_type: db_type,
+            db_type,
             deploy_name: 'no_audience',
             max_token_expiry: 60,
             keep_master_open: true,
             username: 'admin',
-            password: 'admin'
+            password: 'admin',
+            share_keys_with: ks_for_update
         }, function (err, the_authz)
         {
             if (err) { return cb(err); }
+            expect(the_authz.keystore.db_type).to.equal(db_type);
             no_audience_authz = the_authz;
             cb();
         });
@@ -712,7 +724,7 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
 
         priv_key1 = JWK.generateSync(kty, crvOrSize, { alg });
 
-        ks_for_update.add_pub_key(uri1, toPEM(priv_key1), function (err, issuer_id, new_rev)
+        ks_for_update.add_pub_key(uri1, serialize_key(priv_key1), function (err, issuer_id, new_rev)
         {
             if (err) { return cb(err); }
             expect(issuer_id).not.to.equal(issuer_id1);
@@ -809,7 +821,7 @@ after(function ()
     couchdb_process.kill();
 });
 
-for (const db_type of ['pouchdb', 'couchdb']) {
+for (const db_type of ['in-mem', 'pouchdb', 'couchdb']) {
     setup(db_type, 'RSA', 'RS256');
     setup(db_type, 'RSA', 'RS384');
     setup(db_type, 'RSA', 'RS512');
