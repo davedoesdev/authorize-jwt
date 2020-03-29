@@ -48,6 +48,7 @@
     "@wdio/static-server-service": "^5.16.10",
     "babel-eslint": "^10.1.0",
     "chai": "^4.2.0",
+    "config": "^3.3.1",
     "coveralls": "^3.0.9",
     "grunt": "^1.0.4",
     "grunt-apidox": "^2.0.8",

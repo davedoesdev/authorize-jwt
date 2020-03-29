@@ -1,0 +1,7 @@
+{
+  "db": {
+    "host": "/var/run/postgresql",
+    "database": "authorize-jwt",
+    "user": "postgres"
+  }
+}

@@ -8,13 +8,16 @@
 var http = require('http'),
     child_process = require('child_process'),
     path = require('path'),
+    fs = require('fs'),
     pub_keystore = require('pub-keystore'),
     { JWK, JWT } = require('jose'),
     expect = require('chai').expect,
     authorize_jwt = require('..'),
+    config = require('config'),
     uri1 = 'mailto:dave@davedoesdev.com',
     uri2 = 'http://www.davedoesdev.com',
-    audience = 'urn:authorize-jwt:test';
+    audience = 'urn:authorize-jwt:test',
+    db_filename = path.join(__dirname, 'authorize-jwt.sqlite3');
 
 function expr(v) { return v; }
 
@@ -70,7 +73,9 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
             db_for_update: true,
             no_changes: true,
             username: 'admin',
-            password: 'admin'
+            password: 'admin',
+            db_filename,
+            db: config.db
         }, function (err, ks)
         {
             if (err) { return cb(err); }
@@ -112,6 +117,8 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
             keep_master_open: true,
             username: 'admin',
             password: 'admin',
+            db_filename,
+            db: config.db,
             share_keys_with: ks_for_update
         }, function (err, the_authz)
         {
@@ -143,6 +150,8 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
             clockTolerance: '1m',
             username: 'admin',
             password: 'admin',
+            db_filename,
+            db: config.db,
             share_keys_with: ks_for_update
         }, function (err, the_authz)
         {
@@ -168,6 +177,8 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
             keep_master_open: true,
             username: 'admin',
             password: 'admin',
+            db_filename,
+            db: config.db,
             share_keys_with: ks_for_update
         }, function (err, the_authz)
         {
@@ -698,7 +709,10 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
             expect(rev).not.to.equal(old_rev);
             expr(expect(deleted).to.be.false);
 
-            if ((db_type === 'couchdb') && (change_count === 2))
+            if (((db_type === 'couchdb') ||
+                 (db_type === 'sqlite') ||
+                 (db_type === 'pg')) &&
+                (change_count === 2))
             {
                 cb();
             }
@@ -821,7 +835,14 @@ after(function ()
     couchdb_process.kill();
 });
 
-for (const db_type of ['in-mem', 'pouchdb', 'couchdb']) {
+before(function (cb)
+{
+    fs.copyFile(path.join(__dirname, '..', 'node_modules', 'pub-keystore', 'sql', 'pub-keystore.empty.sqlite3'),
+                db_filename,
+                cb);
+});
+
+for (const db_type of ['in-mem', 'pouchdb', 'couchdb', 'sqlite', 'pg']) {
     setup(db_type, 'RSA', 'RS256');
     setup(db_type, 'RSA', 'RS384');
     setup(db_type, 'RSA', 'RS512');
