@@ -444,9 +444,9 @@ AuthorizeJWT.prototype.authorize = function (authz_token, algorithms, cb)
                     return cb(new Error('issuer found in webauthn mode'));
                 }
 
+                /* istanbul ignore if */
                 // Double-check the token was unsigned, should be caught by
                 // JWT.verify above because JWK.None errors for signed tokens.
-                /* istanbul ignore if */
                 if (header && (header.alg !== 'none'))
                 {
                     return cb(new Error('signed token supplied in webauthn mode'));
