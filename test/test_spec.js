@@ -842,6 +842,21 @@ before(function (cb)
                 cb);
 });
 
+before(function (cb)
+{
+    const { Client } = require('pg');
+    const db = new Client(config.db);
+    db.connect(function (err)
+    {
+        if (err) { return cb(err); }
+        db.query('DELETE FROM pub_keys', function (err)
+        {
+            if (err) { return cb(err); }
+            db.end(cb);
+        });
+    });
+});
+
 for (const db_type of ['in-mem', 'pouchdb', 'couchdb', 'sqlite', 'pg']) {
     setup(db_type, 'RSA', 'RS256');
     setup(db_type, 'RSA', 'RS384');
