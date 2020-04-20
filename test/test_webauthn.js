@@ -389,6 +389,7 @@ describe('WebAuthn', function ()
 
             expect(info.uri).to.equal(user_uri);
             expect(info.assertion_response.clientData.get('challenge')).to.equal(client_jwt);
+            expect(info.assertion_response.issuer_id).to.equal(issuer_id);
             expect(info.payload.foo).to.equal(90);
         }
 
