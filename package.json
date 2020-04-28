@@ -36,7 +36,7 @@
     "@davedoesdev/fido2-lib": "^2.5.0",
     "basic-auth-parser": "^0.0.2",
     "jose": "^1.25.0",
-    "pub-keystore": "^4.3.0"
+    "pub-keystore": "^4.4.1"
   },
   "devDependencies": {
     "@wdio/cli": "^5.20.1",
