@@ -163,7 +163,7 @@ describe('WebAuthn', function ()
         {
             options = Object.assign(
             {
-                audience: audience,
+                audience,
                 issuer: undefined,
                 expire: true,
                 modify_sig: false,
@@ -413,15 +413,17 @@ describe('WebAuthn', function ()
         try
         {
             await gen_and_verify(authz, {audience: 'foobar'});
+            throw new Error('should throw');
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('unrecognized authorization token audience: foobar');
+            expect(ex.message).to.equal('unexpected "aud" claim value');
         }
 
         try
         {
             await gen_and_verify(authz, {issuer: 'foobar'});
+            throw new Error('should throw');
         }
         catch (ex)
         {
@@ -435,11 +437,13 @@ describe('WebAuthn', function ()
         catch (ex)
         {
             expect(ex.message).to.equal('no expires claim');
+            throw new Error('should throw');
         }
 
         try
         {
             await gen_and_verify(authz, {modify_sig: true});
+            throw new Error('should throw');
         }
         catch (ex)
         {
@@ -449,6 +453,7 @@ describe('WebAuthn', function ()
         try
         {
             await gen_and_verify(authz, {wrong_issuer: true});
+            throw new Error('should throw');
         }
         catch (ex)
         {
@@ -458,6 +463,7 @@ describe('WebAuthn', function ()
         try
         {
             await gen_and_verify(authz, {modify_client_data: true});
+            throw new Error('should throw');
         }
         catch (ex)
         {
@@ -470,24 +476,27 @@ describe('WebAuthn', function ()
         try
         {
             await gen_and_verify(authz, {sign_jwt: true});
+            throw new Error('should throw');
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('the key does not support HS256 verify algorithm');
+            expect(ex.message).to.equal('alg not whitelisted');
         }
 
         try
         {
             await gen_and_verify(authz, {sign_jwt: true, allowed_algs: ['HS256']});
+            throw new Error('should throw');
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('the key does not support HS256 verify algorithm');
+            expect(ex.message).to.equal('alg not whitelisted');
         }
 
         try
         {
             await gen_and_verify(authz, {expire_immediately: true});
+            throw new Error('should throw');
         }
         catch (ex)
         {
@@ -497,6 +506,7 @@ describe('WebAuthn', function ()
         try
         {
             await gen_and_verify(authz, {no_complete_webauthn_token: true});
+            throw new Error('should throw');
         }
         catch (ex)
         {
@@ -506,6 +516,7 @@ describe('WebAuthn', function ()
         try
         {
             await gen_and_verify(authz, {complete_error: true});
+            throw new Error('should throw');
         }
         catch (ex)
         {
@@ -515,6 +526,7 @@ describe('WebAuthn', function ()
         try
         {
             await gen_and_verify(authz, {split_error: true});
+            throw new Error('should throw');
         }
         catch (ex)
         {
@@ -524,6 +536,7 @@ describe('WebAuthn', function ()
         try
         {
             await gen_and_verify(authz, {malformed_token: true});
+            throw new Error('should throw');
         }
         catch (ex)
         {
@@ -533,6 +546,7 @@ describe('WebAuthn', function ()
         try
         {
             await gen_and_verify(authz, {malformed_assertion_obj: true});
+            throw new Error('should throw');
         }
         catch (ex)
         {

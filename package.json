@@ -1,7 +1,7 @@
 {
   "name": "authorize-jwt",
   "description": "Simple JSON Web Token authorization",
-  "version": "7.2.0",
+  "version": "7.2.1",
   "homepage": "https://github.com/davedoesdev/authorize-jwt",
   "author": {
     "name": "David Halls",
@@ -35,28 +35,28 @@
   "dependencies": {
     "@davedoesdev/fido2-lib": "^2.5.0",
     "basic-auth-parser": "^0.0.2",
-    "jose": "^1.25.0",
+    "jose": "^1.26.1",
     "pub-keystore": "^4.4.1"
   },
   "devDependencies": {
-    "@wdio/cli": "^5.20.1",
-    "@wdio/firefox-profile-service": "^5.21.0",
-    "@wdio/local-runner": "^5.20.1",
-    "@wdio/mocha-framework": "^5.18.7",
-    "@wdio/selenium-standalone-service": "^5.16.10",
-    "@wdio/spec-reporter": "^5.18.7",
-    "@wdio/static-server-service": "^5.16.10",
+    "@wdio/cli": "^6.1.7",
+    "@wdio/firefox-profile-service": "^6.0.16",
+    "@wdio/local-runner": "^6.1.7",
+    "@wdio/mocha-framework": "^6.1.6",
+    "@wdio/selenium-standalone-service": "^6.0.16",
+    "@wdio/spec-reporter": "^6.1.5",
+    "@wdio/static-server-service": "^6.0.16",
     "babel-eslint": "^10.1.0",
     "chai": "^4.2.0",
     "config": "^3.3.1",
-    "coveralls": "^3.0.9",
-    "grunt": "^1.0.4",
+    "coveralls": "^3.1.0",
+    "grunt": "^1.1.0",
     "grunt-apidox": "^2.0.8",
     "grunt-bg-shell": "^2.3.3",
     "grunt-eslint": "^22.0.0",
     "grunt-mocha-test": "^0.13.3",
-    "mocha": "^7.1.0",
-    "nyc": "^15.0.0",
-    "webdriverio": "^5.20.1"
+    "mocha": "^7.1.2",
+    "nyc": "^15.0.1",
+    "webdriverio": "^6.1.7"
   }
 }

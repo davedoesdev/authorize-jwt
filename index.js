@@ -431,7 +431,7 @@ AuthorizeJWT.prototype.authorize = function (authz_token, algorithms, cb)
                     // Verify the token. We expect it to be unsigned.
                     // We checked the WebAuthn assertion was signed by the
                     // public key above.
-                    ({ header, payload } = JWT.verify(jwt, JWK.None, { complete: true }));
+                    ({ header, payload } = JWT.verify(jwt, JWK.None, Object.assign({}, ths._config, { complete: true, algorithms: ['none'] })));
                 }
                 catch (ex)
                 {
