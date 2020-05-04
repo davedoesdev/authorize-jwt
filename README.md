@@ -237,7 +237,7 @@ It must have the following properties:
 
   - `{String} rev` Revision string for the public key used to verify the token. You can use this to identify tokens that become invalid when a [PubKeyStore.events.change](https://github.com/davedoesdev/pub-keystore#pubkeystoreeventschangeuri-rev-deleted) event occurs for the same issuer but with a different revision string.
 
-  - `{`[`Fido2AssertionResult`](https://apowers313.github.io/fido2-lib/Fido2AssertionResult.html)`} [assertion_result]` If `config.WEBAUTHN_MODE` was passed truthy to [`module.exports`](#moduleexportsconfig-cb) then this contains the validated assertion.
+  - `{`[`Fido2AssertionResult`](https://apowers313.github.io/fido2-lib/Fido2AssertionResult.html)`} [assertion_result]` If `config.WEBAUTHN_MODE` was passed truthy to [`module.exports`](#moduleexportsconfig-cb) then this contains the validated assertion, plus the issuer ID in the `issuer_id` property.
 
 <sub>Go: [TOC](#tableofcontents) | [AuthorizeJWT.prototype](#toc_authorizejwtprototype)</sub>
 
