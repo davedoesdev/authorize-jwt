@@ -1,41 +1,27 @@
-const { Fido2Lib } = require('@davedoesdev/fido2-lib');
-const { coerceToBase64Url } = require('@davedoesdev/fido2-lib/lib/utils');
 const { expect } = require('chai');
 const { promisify } = require('util');
 const path = require('path');
 const fs = require('fs');
+const makeWebAuthn = require('webauthn4js');
 const authorize_jwt = promisify(require('..'));
-const writeFile = promisify(fs.writeFile);
 const origin = 'https://localhost:4567';
 const audience = 'urn:authorize-jwt:webauthn-test';
 const user_uri = 'tag:localhost,2018-05-22:test';
 
-function BufferToArrayBuffer(buf)
-{
-    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-}
-
-let authz;
-
 function complete_webauthn_token(webauthn_token, cb)
 {
-    webauthn_token.expected_factor = 'either';
-    webauthn_token.expected_origin = origin;
-    webauthn_token.prev_counter = 0;
-    webauthn_token.expected_user_handle = webauthn_token.assertion.response.userHandle;
+    webauthn_token.opts = [cro => {
+        cro.userVerification = 'preferred'; // this is the default
+    }];
     cb(null, webauthn_token);
 }
 
-before(async function ()
-{
-    authz = await authorize_jwt({
-        db_type: 'pouchdb',
-        db_for_update: true,
-        WEBAUTHN_MODE: true,
-        audience,
-        complete_webauthn_token
-    });
-});
+function b64url(buf) {
+    return buf.toString('base64')
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=/g, "");
+}
 
 async function executeAsync(f, ...args)
 {
@@ -44,6 +30,18 @@ async function executeAsync(f, ...args)
         (async function ()
         {
             let done = args[args.length - 1];
+            window.bufferDecode = function (value) {
+                return Uint8Array.from(atob(value), c => c.charCodeAt(0));
+            }
+            window.b64url = function (s) {
+                return btoa(s)
+                    .replace(/\+/g, "-")
+                    .replace(/\//g, "_")
+                    .replace(/=/g, "");
+            }
+            window.bufferEncode = function (value) {
+                return b64url(String.fromCharCode.apply(null, new Uint8Array(value)));
+            }
             try
             {
                 done(await eval(f)(...args.slice(0, -1)));
@@ -56,106 +54,108 @@ async function executeAsync(f, ...args)
     }, f.toString(), ...args);
 }
 
-describe('WebAuthn', function ()
+function test(separate)
+{
+describe(`WebAuthn (separate=${separate})`, function ()
 {
     it('should authorize', async function ()
     {
         this.timeout(5 * 60 * 1000);
         browser.setTimeout({ 'script': 5 * 60 * 1000 });
 
+        // make authorize-jwt instance
+        const authz_options = {
+            db_type: 'pouchdb',
+            db_for_update: true,
+            WEBAUTHN_MODE: true,
+            audience,
+            complete_webauthn_token
+        };
+        const webauthn_options = {
+            RPDisplayName: 'AuthorizeJWT',
+            RPID: 'localhost',
+            RPOrigin: origin
+        };
+        let authz;
+        if (separate) {
+            authz = await authorize_jwt({
+                ...authz_options,
+                webAuthn: await makeWebAuthn(webauthn_options)
+            });
+        }  else {
+            authz = await authorize_jwt({
+                ...authz_options,
+                ...webauthn_options
+            });
+        }
+
         //await browser.pause(60000);
         await browser.url(origin + '/test_webauthn.html');
 
-        const fido2lib = new Fido2Lib();
+        // create user (server)
+        const user = {
+            id: 'test',
+            name: 'test',
+            displayName: 'Test',
+            iconURL: '',
+            credentials: []
+        };
 
-        // create challenge (server)
+        // create login options (server)
 
-        const options = await fido2lib.attestationOptions();
-        expect(options.challenge instanceof ArrayBuffer).to.be.true;
-        expect(options.challenge.byteLength).to.equal(64);
-        expect(options.timeout).to.equal(60000);
+        const { options, sessionData } = await authz.webAuthn.beginRegistration(user);
+        expect(b64url(options.publicKey.challenge)).to.equal(sessionData.challenge);
 
-        // check we're getting different ones
-        const options2 = await fido2lib.attestationOptions();
-        expect(options2.challenge instanceof ArrayBuffer).to.be.true;
-        expect(options2.challenge.byteLength).to.equal(64);
-        expect(options2.timeout).to.equal(60000);
-
-        let challenge_buf = Buffer.from(options.challenge);
-        expect(challenge_buf.equals(Buffer.from(options2.challenge))).to.be.false;
-
-        // allow challenge to be sent to browser
-        options.challenge = Array.from(challenge_buf);
+        // check we're getting different ones (server)
+        const { options: options2, sessionData: sessionData2 } = await authz.webAuthn.beginRegistration(user);
+        expect(b64url(options2.publicKey.challenge)).to.equal(sessionData2.challenge);
+        expect(options2.publicKey.challenge).not.to.equal(options.publicKey.challenge);
 
         // create credential (browser)
-        const cred = await executeAsync(async options =>
+        const ccr = await executeAsync(async options =>
         {
-            const res = await navigator.credentials.create({ publicKey: {
-                rp: { name: 'AuthorizeJWTTest' },
-                user: {
-                    name: 'test',
-                    displayName: 'Test',
-                    id: new TextEncoder().encode('test')
-                },
-                challenge: Uint8Array.from(options.challenge),
-                pubKeyCredParams: [{
-                    type: 'public-key',
-                    alg: -7
-                }],
-                timeout: options.timeout,
-                attestation: 'none' // https://www.w3.org/TR/webauthn/#attestation-conveyance
-            }});
+            const { publicKey } = options;
+            publicKey.challenge = bufferDecode(publicKey.challenge);
+            publicKey.user.id = bufferDecode(publicKey.user.id);
+            if (publicKey.excludeCredentials) {
+                for (const c of publicKey.excludeCredentials) {
+                    c.id = bufferDecode(c.id);
+                }
+            }
+            const credential = await navigator.credentials.create(options);
+            const { id, rawId, type, response } = credential;
+            const { attestationObject, clientDataJSON } = response;
             return {
-                id: res.id,
+                id,
+                rawId: bufferEncode(rawId),
+                type,
                 response: {
-                    attestationObject: Array.from(new Uint8Array(res.response.attestationObject)),
-                    clientDataJSON: new TextDecoder('utf-8').decode(res.response.clientDataJSON)
+                    attestationObject: bufferEncode(attestationObject),
+                    clientDataJSON: bufferEncode(clientDataJSON)
                 }
             };
         }, options);
 
-        if (cred.error) { throw new Error(cred.error); }
+        if (ccr.error) { throw new Error(ccr.error); }
 
-        // change types for fido2lib
-        cred.id = BufferToArrayBuffer(Buffer.from(cred.id, 'base64'));
-        cred.response.attestationObject = BufferToArrayBuffer(Buffer.from(cred.response.attestationObject));
-        cred.response.clientDataJSON = BufferToArrayBuffer(Buffer.from(cred.response.clientDataJSON));
+        // verify response (server)
+        const credential = await authz.webAuthn.finishRegistration(user, sessionData, ccr);
+        user.credentials.push(credential);
 
-        // verify credential (server)
-        const cred_response = await fido2lib.attestationResult(cred,
-        {
-            challenge: challenge_buf,
-            origin: origin,
-            factor: 'either'
-        });
-        
-        // add public key (server)
+        // add user (server)
         const add_pub_key = promisify(authz.keystore.add_pub_key.bind(authz.keystore));
+        let issuer_id = await add_pub_key(user_uri, user);
 
-        let issuer_id = await add_pub_key(
-            user_uri,
-            {
-                pub_key: cred_response.authnrData.get('credentialPublicKeyPem'),
-                cred_id: Buffer.from(cred_response.authnrData.get('credId')).toString('base64')
-            });
-
-        // check we can retrieve the cred ID (server)
+        // check we can retrieve the user (server)
         const get_pub_key_by_uri = promisify(authz.keystore.get_pub_key_by_uri.bind(authz.keystore));
-
-        const cred_id = Array.from(Buffer.from((await get_pub_key_by_uri(user_uri)).cred_id, 'base64'));
+        expect(await get_pub_key_by_uri(user_uri)).to.eql(user);
 
         // async function to authorize assertion
         const authorize = promisify((authz, authz_token, allowed_algs, cb) =>
         {
-            authz.authorize(authz_token, allowed_algs, (err, payload, uri, rev, assertion_response) =>
+            authz.authorize(authz_token, allowed_algs, (err, payload, uri, rev, credential) =>
             {
-                cb(err,
-                {
-                    payload: payload, 
-                    uri: uri,
-                    rev: rev,
-                    assertion_response: assertion_response
-                });
+                cb(err, { payload, uri, rev, credential });
             });
         });
 
@@ -176,13 +176,8 @@ describe('WebAuthn', function ()
 
             // generate JWT and sign it using WebAuthn (browser)
 
-            const assertion = await executeAsync(async (options, cred_id) =>
+            const car = await executeAsync(async (options, cred_id) =>
             {
-                function b64url(s)
-                {
-                    return btoa(s).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
-                }
-
                 async function jwt_encode(header, payload, secret)
                 {
                     const unsigned_token = b64url(JSON.stringify(header)) + '.' +
@@ -256,68 +251,62 @@ describe('WebAuthn', function ()
                 const assertion = await navigator.credentials.get({ publicKey: {
                     challenge: new TextEncoder().encode(jwt),
                     allowCredentials: [{
-                        id: Uint8Array.from(cred_id),
+                        id: bufferDecode(cred_id),
                         type: 'public-key'
                     }]
                 }});
+                
+                const { id, rawId, type, response } = assertion;
+                const { authenticatorData, clientDataJSON, signature, userHandle } = response;
 
                 return {
-                    id: assertion.id,
+                    id,
+                    rawId: bufferEncode(rawId),
+                    type,
                     response: {
-                        authenticatorData: Array.from(new Uint8Array(assertion.response.authenticatorData)),
-                        clientDataJSON: new TextDecoder('utf-8').decode(assertion.response.clientDataJSON),
-                        signature: Array.from(new Uint8Array(assertion.response.signature)),
-                        userHandle: assertion.response.userHandle ? Array.from(new Uint8Array(assertion.response.userHandle)) : null
+                        authenticatorData: bufferEncode(authenticatorData),
+                        clientDataJSON: bufferEncode(clientDataJSON),
+                        signature: bufferEncode(signature),
+                        userHandle: bufferEncode(userHandle)
                     }
                 };
-            }, options, cred_id);
+            }, options, credential.ID);
 
-            if (assertion.error) { throw new Error(assertion.error); }
+            if (car.error) { throw new Error(car.error); }
 
-            if (options.no_user_handle)
+            if (options.delete_user_handle)
             {
-                assertion.response.userHandle = null;
+                delete car.response.userHandle;
+            }
+
+            if (options.null_user_handle)
+            {
+                car.response.userHandle = null;
             }
 
             if (options.empty_user_handle)
             {
-                assertion.response.userHandle = [];
+                car.response.userHandle = "";
             }
 
-            // change types for fido2lib
-            const client_jwt = JSON.parse(assertion.response.clientDataJSON).challenge;
-            assertion.id = BufferToArrayBuffer(Buffer.from(assertion.id, 'base64'));
-            assertion.response.authenticatorData = BufferToArrayBuffer(Buffer.from(assertion.response.authenticatorData));
-            assertion.response.clientDataJSON = BufferToArrayBuffer(Buffer.from(assertion.response.clientDataJSON));
-            assertion.response.userHandle = assertion.response.userHandle ? BufferToArrayBuffer(Buffer.from(assertion.response.userHandle)) : undefined;
-
-            const sigbuf = Buffer.from(assertion.response.signature);
-            assertion.response.signature = BufferToArrayBuffer(sigbuf);
-
-            // check assertion with fido2lib first (server)
-            await fido2lib.assertionResult(assertion,
-            {
-                challenge: client_jwt,
-                origin: origin,
-                factor: 'either',
-                publicKey: cred_response.authnrData.get('credentialPublicKeyPem'),
-                prevCounter: 0,
-                // not all authenticators can store user handles
-                userHandle: assertion.response.userHandle === undefined ? null : assertion.response.userHandle
-            });
+            // check assertion with WebAuthn4JS first (server)
+            const { sessionData } = await authz.webAuthn.beginLogin(user);
+            sessionData.challenge = JSON.parse(Buffer.from(car.response.clientDataJSON, 'base64')).challenge;
+            expect((await authz.webAuthn.finishLogin(user, sessionData, car)).ID).to.equal(credential.ID);
 
             if (options.modify_sig)
             {
+                const sigbuf = Buffer.from(car.response.signature, 'base64');
                 for (let i = 0; i < sigbuf.length; ++i)
                 {
                     sigbuf[i] ^= 1;
                 }
-                assertion.response.signature = BufferToArrayBuffer(sigbuf);
+                car.response.signature = b64url(sigbuf);
             }
 
             if (options.modify_client_data)
             {
-                assertion.response.clientDataJSON = 'a' + assertion.response.clientDataJSON;
+                car.response.clientDataJSON = 'YQ' + car.response.clientDataJSON;
             }
 
             const orig_complete_webauthn_token = authz._config.complete_webauthn_token;
@@ -352,15 +341,14 @@ describe('WebAuthn', function ()
                 else if (options.string_token)
                 {
                     token = [issid,
-                             coerceToBase64Url(assertion.id, 'id'),
-                             coerceToBase64Url(assertion.response.clientDataJSON, 'clientDataJSON'),
-                             coerceToBase64Url(assertion.response.authenticatorData, 'authenticatorData'),
-                             coerceToBase64Url(assertion.response.signature, 'signature')];
-                    if (assertion.response.userHandle)
+                             car.id,
+                             car.response.clientDataJSON,
+                             car.response.authenticatorData,
+                             car.response.signature];
+                    if (car.response.userHandle !== null)
                     {
-                        token.push(coerceToBase64Url(assertion.response.userHandle, 'userHandle'));
+                        token.push(car.response.userHandle);
                     }
-
                     token = token.join('.');
                 }
                 else if (options.malformed_assertion_obj)
@@ -370,13 +358,8 @@ describe('WebAuthn', function ()
                 else
                 {
                     token = {
-                        assertion: assertion,
                         issuer_id: issid,
-                        expected_factor: 'either',
-                        expected_origin: origin,
-                        prev_counter: 0,
-                        // not all authenticators can store user handles
-                        expected_user_handle: assertion.response.userHandle
+                        car
                     };
                 }
 
@@ -388,8 +371,8 @@ describe('WebAuthn', function ()
             }
 
             expect(info.uri).to.equal(user_uri);
-            expect(info.assertion_response.clientData.get('challenge')).to.equal(client_jwt);
-            expect(info.assertion_response.issuer_id).to.equal(issuer_id);
+            expect(info.credential.ID).to.equal(credential.ID);
+            expect(info.credential.issuer_id).to.equal(issuer_id);
             expect(info.payload.foo).to.equal(90);
         }
 
@@ -404,9 +387,7 @@ describe('WebAuthn', function ()
 
         await gen_and_verify(authz);
 
-        issuer_id = await add_pub_key(
-            user_uri,
-            cred_response.authnrData.get('credentialPublicKeyPem'));
+        issuer_id = await add_pub_key(user_uri, user);
 
         await gen_and_verify(authz);
 
@@ -447,7 +428,9 @@ describe('WebAuthn', function ()
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('signature validation failed');
+            //https://github.com/duo-labs/webauthn/pull/75
+            // Message should change once the issue is fixed
+            expect(ex.message).to.equal('panic: runtime error: invalid memory address or nil pointer dereference');
         }
 
         try
@@ -457,7 +440,7 @@ describe('WebAuthn', function ()
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('no public key found for issuer ID foobar');
+            expect(ex.message).to.equal('no user found for issuer ID foobar');
         }
 
         try
@@ -467,10 +450,7 @@ describe('WebAuthn', function ()
         }
         catch (ex)
         {
-            expect(ex.message).to.be.oneOf([
-                'Unexpected token a in JSON at position 0',
-                'Unexpected token j in JSON at position 0'
-            ]);
+            expect(ex.message).to.equal('Unexpected token a in JSON at position 0');
         }
 
         try
@@ -553,23 +533,50 @@ describe('WebAuthn', function ()
             expect(ex.message).to.equal('The first argument must be of type string or an instance of Buffer, ArrayBuffer, or Array or an Array-like Object. Received undefined');
         }
 
-        await gen_and_verify(authz, {no_user_handle: true});
+        await gen_and_verify(authz, {delete_user_handle: true});
         await gen_and_verify(authz, {empty_user_handle: true});
 
-        const close = promisify(cb =>
+        try
         {
-            authz.keystore.close(cb);
-        });
+            await gen_and_verify(authz, {null_user_handle: true});
+            throw new Error('should throw');
+        }
+        catch (ex)
+        {
+            // https://github.com/duo-labs/webauthn/blob/master/protocol/base64.go#L34
+            // unmarshals to the string "null"
+            expect(ex.message).to.equal('userHandle and User ID do not match');
+        }
 
-        await close();
+        await promisify(authz.close.bind(authz))();
+        await promisify(authz.close.bind(authz))(); // Check ignores not_open errors
 
         try
         {
             await gen_and_verify(authz);
+            throw new Error('should throw');
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('not_open');
+            expect(ex.message).to.equal(separate ? 'not_open' : 'Go program has already exited');
+        }
+
+        if (separate)
+        {
+            await authz.webAuthn.exit();
+        }
+
+        try
+        {
+            await authorize_jwt(authz_options);
+            throw new Error('should throw');
+        }
+        catch (ex)
+        {
+            expect(ex.message).to.equal('Configuration error: Missing RPDisplayName');
         }
     });
 });
+}
+test(false);
+test(true);

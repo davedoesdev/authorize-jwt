@@ -133,7 +133,7 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
     {
         authz.keystore.close(function (err)
         {
-            //TODOexpr(expect(err).to.exist); // closed in final test
+            expr(expect(err).to.exist); // closed in final test
             cb();
         });
     });
@@ -302,7 +302,7 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
         {
             if (err) { return cb(err); }
             expect(authz.keystore).to.equal(ks);
-            cb();
+            authz.close(cb);
         });
     });
 
@@ -697,6 +697,34 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
         });
     });
 
+    it('should catch errors when extracting authorization data', function (cb)
+    {
+        var http_server = http.createServer(function (req, res)
+        {
+            req.headers.authorization = {
+                split() {
+                    throw new Error('dummy');
+                }
+            };
+
+            authz.get_authz_data(req, function (err, req_info, req_token)
+            {
+                expect(err.message).to.equal('dummy');
+                res.end();
+                http_server.close(cb);
+            });
+        }).listen(6000, '127.0.0.1', function (err)
+        {
+            if (err) { return cb(err); }
+            http.request(
+            {
+                hostname: '127.0.0.1',
+                port: 6000,
+                auth: 'test:' + token
+            }).end();
+        });
+    });
+
     it('should emit change event when public key is updated', function (cb)
     {
         var change_count = 0, replicated_count = 0, old_rev = rev1;
@@ -783,7 +811,7 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
 
     it('should fail to authorize when keystore is closed', function (cb)
     {
-        authz.keystore.close(function (err)
+        authz.close(function (err)
         {
             if (err) { return cb(err); }
 

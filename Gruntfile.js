@@ -26,33 +26,50 @@ module.exports = function (grunt)
             extraHeadingLevels: 1
         },
 
-        bgShell: {
+        shell: {
             cover: {
-                cmd: "./node_modules/.bin/nyc -x Gruntfile.js -x 'test/**' -x wdio.conf.js ./node_modules/.bin/grunt test-webauthn test",
-                fail: true,
-                execOpts: {
-                    maxBuffer: 0
+                command: "./node_modules/.bin/nyc -x Gruntfile.js -x 'test/**' -x wdio.conf.js ./node_modules/.bin/grunt test-webauthn test",
+                options: {
+                    execOptions: {
+                        stdio: 'inherit'
+                    }
                 }
             },
 
             cover_report: {
-                cmd: './node_modules/.bin/nyc report -r lcov',
-                fail: true
+                command: './node_modules/.bin/nyc report -r lcov',
+                options: {
+                    execOptions: {
+                        stdio: 'inherit'
+                    }
+                }
             },
 
             cover_check: {
-                cmd: './node_modules/.bin/nyc check-coverage --statements 100 --branches 100 --functions 100 --lines 100',
-                fail: true
+                command: './node_modules/.bin/nyc check-coverage --statements 100 --branches 100 --functions 100 --lines 100',
+                options: {
+                    execOptions: {
+                        stdio: 'inherit'
+                    }
+                }
             },
 
             coveralls: {
-                cmd: 'cat coverage/lcov.info | coveralls',
-                fail: true
+                command: 'cat coverage/lcov.info | coveralls',
+                options: {
+                    execOptions: {
+                        stdio: 'inherit'
+                    }
+                }
             },
 
             test_webauthn: {
-                cmd: './node_modules/.bin/wdio',
-                fail: true
+                command: './node_modules/.bin/wdio',
+                options: {
+                    execOptions: {
+                        stdio: 'inherit'
+                    }
+                }
             }
         }
     });
@@ -60,15 +77,15 @@ module.exports = function (grunt)
     grunt.loadNpmTasks('grunt-eslint');
     grunt.loadNpmTasks('grunt-mocha-test');
     grunt.loadNpmTasks('grunt-apidox');
-    grunt.loadNpmTasks('grunt-bg-shell');
+    grunt.loadNpmTasks('grunt-shell-spawn');
 
     grunt.registerTask('lint', 'eslint');
     grunt.registerTask('test', 'mochaTest:default');
-    grunt.registerTask('test-webauthn', 'bgShell:test_webauthn');
+    grunt.registerTask('test-webauthn', 'shell:test_webauthn');
     grunt.registerTask('docs', 'apidox');
-    grunt.registerTask('coverage', ['bgShell:cover',
-								    'bgShell:cover_report',
-                                    'bgShell:cover_check']);
-    grunt.registerTask('coveralls', 'bgShell:coveralls');
+    grunt.registerTask('coverage', ['shell:cover',
+								    'shell:cover_report',
+                                    'shell:cover_check']);
+    grunt.registerTask('coveralls', 'shell:coveralls');
     grunt.registerTask('default', ['lint', 'test']);
 };
