@@ -428,9 +428,7 @@ describe(`WebAuthn (separate=${separate})`, function ()
         }
         catch (ex)
         {
-            //https://github.com/duo-labs/webauthn/pull/75
-            // Message should change once the issue is fixed
-            expect(ex.message).to.equal('panic: runtime error: invalid memory address or nil pointer dereference');
+            expect(ex.message).to.equal('Error validating the assertion signature: Signature invalid or not provided\n');
         }
 
         try
