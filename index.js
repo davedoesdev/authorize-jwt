@@ -199,7 +199,7 @@ module.exports = function (config, cb)
             return make(null, config.webAuthn);
         }
 
-        return makeWebAuthn(config, make);
+        return makeWebAuthn(Object.assign({}, config, { keystore: undefined }), make);
     }
 
     make();
