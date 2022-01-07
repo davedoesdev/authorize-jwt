@@ -458,7 +458,7 @@ describe(`WebAuthn (separate=${separate})`, function ()
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('alg not whitelisted');
+            expect(ex.message).to.equal('Invalid Unsecured JWT');
         }
 
         try
@@ -468,7 +468,7 @@ describe(`WebAuthn (separate=${separate})`, function ()
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('alg not whitelisted');
+            expect(ex.message).to.equal('Invalid Unsecured JWT');
         }
 
         try
@@ -518,7 +518,7 @@ describe(`WebAuthn (separate=${separate})`, function ()
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('JWTs must have three components');
+            expect(ex.message).to.equal('Invalid Unsecured JWT');
         }
 
         try
@@ -533,18 +533,7 @@ describe(`WebAuthn (separate=${separate})`, function ()
 
         await gen_and_verify(authz, {delete_user_handle: true});
         await gen_and_verify(authz, {empty_user_handle: true});
-
-        try
-        {
-            await gen_and_verify(authz, {null_user_handle: true});
-            throw new Error('should throw');
-        }
-        catch (ex)
-        {
-            // https://github.com/duo-labs/webauthn/blob/master/protocol/base64.go#L34
-            // unmarshals to the string "null"
-            expect(ex.message).to.equal('userHandle and User ID do not match');
-        }
+        await gen_and_verify(authz, {null_user_handle: true});
 
         await promisify(authz.close.bind(authz))();
         await promisify(authz.close.bind(authz))(); // Check ignores not_open errors

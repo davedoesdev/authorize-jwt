@@ -10,7 +10,15 @@ var http = require('http'),
     path = require('path'),
     fs = require('fs'),
     pub_keystore = require('pub-keystore'),
-    { JWK, JWT } = require('jose'),
+    {
+        generateKeyPair,
+        generateSecret,
+        exportJWK,
+        exportSPKI,
+        SignJWT,
+        UnsecuredJWT,
+        importPKCS8
+    } = require('jose'),
     expect = require('chai').expect,
     authorize_jwt = require('..'),
     config = require('config'),
@@ -19,18 +27,31 @@ var http = require('http'),
     audience = 'urn:authorize-jwt:test',
     db_filename = path.join(__dirname, 'authorize-jwt.sqlite3');
 
+process.on('unhandledRejection', err => { throw err });
+
 function expr(v) { return v; }
 
 function setup(db_type, kty, alg, crvOrSize)
 {
-function serialize_key(priv_key) {
+async function generate_key() {
+    if (kty === 'oct') {
+        const r = await generateSecret(alg);
+        return { privateKey: r, publicKey: r };
+    }
+
+    return await generateKeyPair(alg, {
+        crv: crvOrSize
+    });
+}
+
+async function serialize_key(pub_key) {
     if (db_type === 'in-mem') {
-        return priv_key;
+        return pub_key;
     }
-    if (priv_key.type === 'secret') {
-        return priv_key.toJWK(true);
+    if (pub_key.type === 'secret') {
+        return await exportJWK(pub_key);
     }
-    return priv_key.toPEM();
+    return await exportSPKI(pub_key);
 }
 
 describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
@@ -57,15 +78,16 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
         token2,
         allowed_algs = [alg];
 
-    before(function (cb)
-    {
+    before(function (cb) { (async () => {
         // put public key into keystore
 
-        priv_key1 = JWK.generateSync(kty, crvOrSize, { alg });
-        priv_key2 = JWK.generateSync(kty, crvOrSize, { alg });
+        let publicKey1, publicKey2;
 
-        var pub_key1 = serialize_key(priv_key1),
-            pub_key2 = serialize_key(priv_key2);
+        ({ privateKey: priv_key1, publicKey: publicKey1 } = await generate_key());
+        ({ privateKey: priv_key2, publicKey: publicKey2 } = await generate_key());
+
+        const pub_key1 = await serialize_key(publicKey1);
+        const pub_key2 = await serialize_key(publicKey2);
 
         pub_keystore(
         {
@@ -97,7 +119,7 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
                 });
             });
         });
-    });
+    })(); });
     
     after(function (cb)
     {
@@ -194,90 +216,78 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
         no_audience_authz.keystore.close(cb);
     });
 
-    before(function ()
+    before(async function ()
     {
         // generate token
 
         const expiresIn = '1m';
 
-        token_no_issuer = JWT.sign({
-            foo: 'wup'
-        }, priv_key1, {
-            algorithm: alg,
-            audience,
-            expiresIn
-        });
+        token_no_issuer = await new SignJWT({ foo: 'wup' })
+            .setProtectedHeader({ alg })
+            .setAudience(audience)
+            .setExpirationTime(expiresIn)
+            .sign(priv_key1);
+
+        token_unknown_issuer = await new SignJWT({})
+            .setProtectedHeader({ alg })
+            .setAudience(audience)
+            .setExpirationTime(expiresIn)
+            .setIssuer('foobar')
+            .sign(priv_key1);
+
+        token_no_audience = await new SignJWT({})
+            .setProtectedHeader({ alg })
+            .setExpirationTime(expiresIn)
+            .setIssuer(issuer_id1)
+            .sign(priv_key1);
+
+        token_wrong_audience = await new SignJWT({})
+            .setProtectedHeader({ alg })
+            .setAudience('some audience')
+            .setExpirationTime(expiresIn)
+            .setIssuer(issuer_id1)
+            .sign(priv_key1);
+
+        token = await new SignJWT({ foo: 90 })
+            .setProtectedHeader({ alg })
+            .setAudience(audience)
+            .setExpirationTime(expiresIn)
+            .setIssuer(issuer_id1)
+            .sign(priv_key1);
         
-        token_unknown_issuer = JWT.sign({}, priv_key1, {
-            algorithm: alg,
-            audience,
-            expiresIn,
-            issuer: 'foobar'
-        });
+        token2 = await new SignJWT({ foo: 90 })
+            .setProtectedHeader({ alg })
+            .setAudience(audience)
+            .setExpirationTime(expiresIn)
+            .setIssuer(issuer_id2)
+            .sign(priv_key2);
 
-        token_no_audience = JWT.sign({}, priv_key1, {
-            algorithm: alg,
-            expiresIn,
-            issuer: issuer_id1
-        });
+        token_wrong_signer = await new SignJWT({ foo: 'bar' })
+            .setProtectedHeader({ alg })
+            .setAudience(audience)
+            .setExpirationTime(expiresIn)
+            .setIssuer(issuer_id1)
+            .sign(priv_key2);
 
-        token_wrong_audience = JWT.sign({}, priv_key1, {
-            algorithm: alg,
-            audience: 'some audience',
-            expiresIn,
-            issuer: issuer_id1
-        });
+        token_no_signer = new UnsecuredJWT({ foo: 'bar' })
+            .setAudience(audience)
+            .setExpirationTime(expiresIn)
+            .setIssuer(issuer_id1)
+            .encode();
 
-        token = JWT.sign({
-            foo: 90
-        }, priv_key1, {
-            algorithm: alg,
-            audience,
-            expiresIn,
-            issuer: issuer_id1
-        });
-        
-        token2 = JWT.sign({
-            foo: 90
-        }, priv_key2, {
-            algorithm: alg,
-            audience,
-            expiresIn,
-            issuer: issuer_id2
-        });
+        token_beyond_max_expiry = await new SignJWT({})
+            .setProtectedHeader({ alg })
+            .setAudience(audience)
+            .setExpirationTime('2m')
+            .setIssuer(issuer_id1)
+            .sign(priv_key1);
 
-        token_wrong_signer = JWT.sign({
-            foo: 'bar'
-        }, priv_key2, {
-            algorithm: alg,
-            audience,
-            expiresIn,
-            issuer: issuer_id1
-        });
-
-        token_no_signer = JWT.sign({
-            foo: 'bar'
-        }, JWK.None, {
-            audience,
-            expiresIn,
-            issuer: issuer_id1
-        });
-
-        token_beyond_max_expiry = JWT.sign({}, priv_key1, {
-            algorithm: alg,
-            audience,
-            expiresIn: '2m',
-            issuer: issuer_id1
-        });
-
-        token_short_expiry = JWT.sign({
-            foo: 'bar'
-        }, priv_key1, {
-            algorithm: alg,
-            audience,
-            expiresIn: '0s',
-            issuer: issuer_id1
-        });
+        token_short_expiry = await new SignJWT({ foo: 'bar' })
+            .setProtectedHeader({ alg })
+            .setAudience(audience)
+            .setExpirationTime('0s')
+            .setIssuer(issuer_id1)
+            .sign(priv_key1);
     });
 
     it('should fail to make when passed an unknown keystore type', function (cb)
@@ -725,9 +735,18 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
         });
     });
 
-    it('should emit change event when public key is updated', function (cb)
-    {
+    it('should emit change event when public key is updated', function (cb) { (async () => {
         var change_count = 0, replicated_count = 0, old_rev = rev1;
+
+        function done() {
+            authz.keystore.removeListener('change', change);
+            skew_authz.keystore.removeListener('change', change);
+
+            authz.keystore.removeListener('replicated', replicated);
+            skew_authz.keystore.removeListener('replicated', replicated);
+
+            cb();
+        }
 
         function change(uri, rev, deleted)
         {
@@ -742,7 +761,7 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
                  (db_type === 'pg')) &&
                 (change_count === 2))
             {
-                cb();
+                done();
             }
         }
 
@@ -754,7 +773,7 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
             
             if (replicated_count === 2)
             {
-                cb();
+                done();
             }
         }
 
@@ -764,9 +783,11 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
         authz.keystore.on('replicated', replicated);
         skew_authz.keystore.on('replicated', replicated);
 
-        priv_key1 = JWK.generateSync(kty, crvOrSize, { alg });
+        let publicKey;
+        ({ privateKey: priv_key1, publicKey } = await generate_key());
+        const pub_key = await serialize_key(publicKey);
 
-        ks_for_update.add_pub_key(uri1, serialize_key(priv_key1), function (err, issuer_id, new_rev)
+        ks_for_update.add_pub_key(uri1, pub_key, function (err, issuer_id, new_rev)
         {
             if (err) { return cb(err); }
             expect(issuer_id).not.to.equal(issuer_id1);
@@ -777,7 +798,7 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
 
             ks_for_update.deploy();
         });
-    });
+    })(); });
 
     it('should fail to authorize JWT when public key has been updated', function (cb)
     {
@@ -788,16 +809,13 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
         });
     });
 
-    it('should authorize JWT signed with new private key', function (cb)
-    {
-        const token2 = JWT.sign({
-            foo: 91
-        }, priv_key1, {
-            algorithm: alg,
-            audience,
-            expiresIn: '1m',
-            issuer: issuer_id1
-        });
+    it('should authorize JWT signed with new private key', function (cb) { (async () => {
+        const token2 = await new SignJWT({ foo: 91 })
+            .setProtectedHeader({ alg })
+            .setAudience(audience)
+            .setExpirationTime('1m')
+            .setIssuer(issuer_id1)
+            .sign(priv_key1);
 
         authz.authorize(token2, allowed_algs, function (err, payload, uri, rev)
         {
@@ -807,7 +825,103 @@ describe(`authorize-jwt db_type=${db_type} kty=${kty} alg=${alg}`, function ()
             expect(payload.foo).to.equal(91);
             cb();
         });
-    });
+    })(); });
+
+    if (kty == 'RSA') {
+        it('should support X509 public keys', function (cb) { (async () => {
+            const keys = path.join(__dirname, 'keys');
+            const pub_key = await fs.promises.readFile(path.join(keys, 'server.crt'), 'utf8');
+            priv_key1 = await importPKCS8(
+                await fs.promises.readFile(path.join(keys, 'server.key'), 'utf8'),
+                alg);
+
+            let change_count = 0, replicated_count = 0, old_rev = rev1;
+
+            function done() {
+                authz.keystore.removeListener('change', change);
+                skew_authz.keystore.removeListener('change', change);
+
+                authz.keystore.removeListener('replicated', replicated);
+                skew_authz.keystore.removeListener('replicated', replicated);
+
+                cb();
+            }
+
+            function change(uri, rev, deleted)
+            {
+                change_count += 1;
+                expect(change_count).to.be.at.most(2);
+                expect(uri).to.equal(uri1);
+                expect(rev).not.to.equal(old_rev);
+                expr(expect(deleted).to.be.false);
+
+                if (((db_type === 'couchdb') ||
+                     (db_type === 'sqlite') ||
+                     (db_type === 'pg')) &&
+                    (change_count === 2))
+                {
+                    done();
+                }
+            }
+
+            function replicated()
+            {
+                replicated_count += 1;
+                expect(replicated_count).to.be.at.most(2);
+                expect(change_count).to.be.at.least(replicated_count);
+                
+                if (replicated_count === 2)
+                {
+                    done();
+                }
+            }
+
+            authz.keystore.on('change', change);
+            skew_authz.keystore.on('change', change);
+
+            authz.keystore.on('replicated', replicated);
+            skew_authz.keystore.on('replicated', replicated);
+
+            ks_for_update.add_pub_key(uri1, pub_key, function (err, issuer_id, new_rev)
+            {
+                if (err) { return cb(err); }
+                expect(issuer_id).not.to.equal(issuer_id1);
+                expect(new_rev).not.to.equal(rev1);
+
+                issuer_id1 = issuer_id;
+                rev1 = new_rev;
+
+                ks_for_update.deploy();
+            });
+        })(); });
+
+        it('should fail to authorize JWT when public key has been updated from X509', function (cb)
+        {
+            authz.authorize(token, allowed_algs, function (err)
+            {
+                expr(expect(err).to.exist);
+                cb();
+            });
+        });
+
+        it('should authorize JWT signed with new private key from PKCS8', function (cb) { (async () => {
+            const token2 = await new SignJWT({ foo: 91 })
+                .setProtectedHeader({ alg })
+                .setAudience(audience)
+                .setExpirationTime('1m')
+                .setIssuer(issuer_id1)
+                .sign(priv_key1);
+
+            authz.authorize(token2, allowed_algs, function (err, payload, uri, rev)
+            {
+                if (err) { return cb(err); }
+                expect(uri).to.equal(uri1);
+                expect(rev).to.equal(rev1);
+                expect(payload.foo).to.equal(91);
+                cb();
+            });
+        })(); });
+    }
 
     it('should fail to authorize when keystore is closed', function (cb)
     {

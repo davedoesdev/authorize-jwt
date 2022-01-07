@@ -1,0 +1,66 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [16]
+
+    services:
+      postgres:
+        image: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      NODE_CONFIG: '{"db": {"host": "localhost"}}'
+
+    steps:
+      - name: Get CouchDB
+        run: |
+          ( cd; git clone "https://github.com/davedoesdev/build-couchdb-gha.git"; cd build-couchdb-gha; wget -O - "https://github.com/davedoesdev/build-couchdb-gha/releases/download/$(git tag | tail -n 1)/couchdb.tar.gz" | tar -zx; mkdir "$HOME/couchdb"; ln -s "$PWD/couchdb" "$HOME/couchdb/rel" )
+          ls -l "$HOME/couchdb/rel/couchdb/bin"
+
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Use Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install packages
+        run: npm install
+
+      - name: Lint
+        run: npx grunt lint
+
+      - name: Create database
+        run: psql -c 'create database "authorize-jwt";'
+
+      - name: Apply migrations
+        run: npm explore pub-keystore -- npx node-pg-migrate up
+        env:
+          NODE_CONFIG: '{"db": {"database": "authorize-jwt"}}' 
+
+      - name: Coverage
+        run: npx grunt coverage
+
+      - name: Coveralls
+        uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}

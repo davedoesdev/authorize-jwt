@@ -5,18 +5,18 @@ const fs = require('fs');
 const https = require('https');
 const { launcher: StaticServerService } = require('@wdio/static-server-service');
 class SecureStaticServerService extends StaticServerService {
-    set server(v) {
+    set _server(v) {
         v.listen = function (port, cb) {
             const key = fs.readFileSync('./test/keys/server.key');
             const cert = fs.readFileSync('./test/keys/server.crt');
             const server = https.createServer({ key, cert }, this);
             server.listen(port, cb);
         };
-        this._server = v;
+        this.__server = v;
     }
 
-    get server() {
-        return this._server;
+    get _server() {
+        return this.__server;
     }
 }
 

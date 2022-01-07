@@ -10,34 +10,38 @@ describe('example in README', function () {
 const authorize_jwt = require('..');
 const http = require('http');
 const assert = require('assert');
-const { JWK, JWT } = require('jose');
-const priv_key = JWK.generateSync('OKP');
-const pub_key = priv_key.toPEM();
+const { generateKeyPair, SignJWT, exportJWK } = require('jose');
 const the_uri = 'mailto:example@davedoesdev.com';
 const audience = 'urn:authorize-jwt:example';
+
+process.on('unhandledRejection', err => { throw err });
 
 // create authorization object
 authorize_jwt({
     db_type: 'pouchdb',
     db_for_update: true, // we're going to update a public key
     max_token_expiry: 60
-}, function (err, authz) {
+}, async function (err, authz) {
     assert.ifError(err);
+
+    const { privateKey: priv_key, publicKey: pub_key } = await generateKeyPair('EdDSA');
 
     var the_issuer_id, the_rev, change_rev;
 
-    function doit() {
+    async function doit() {
         assert.equal(the_rev, change_rev);
 
         // create and sign a JWT
-        const the_token = JWT.sign({
+        const the_token = await new SignJWT({
             foo: 'bar'
-        }, priv_key, {
-            algorithm: 'EdDSA',
-            issuer: the_issuer_id,
-            audience,
-            expiresIn: '1m'
-        });
+        })
+        .setProtectedHeader({
+            alg: 'EdDSA'
+        })
+        .setIssuer(the_issuer_id)
+        .setAudience(audience)
+        .setExpirationTime('1m')
+        .sign(priv_key);
 
         // send and receive the token via HTTP Basic Auth
         const http_server = http.createServer(function (req, res) {
@@ -69,7 +73,7 @@ authorize_jwt({
     });
 
     // add public key to the store
-    authz.keystore.add_pub_key(the_uri, pub_key, function (err, issuer_id, rev) {
+    authz.keystore.add_pub_key(the_uri, await exportJWK(pub_key), function (err, issuer_id, rev) {
         assert.ifError(err);
         the_issuer_id = issuer_id;
         the_rev = rev;
