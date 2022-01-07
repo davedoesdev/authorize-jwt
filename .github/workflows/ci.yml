@@ -27,7 +27,7 @@ jobs:
       PGHOST: localhost
       PGUSER: postgres
       PGPASSWORD: postgres
-      NODE_CONFIG: '{"db": {"host": "localhost"}}'
+      NODE_CONFIG: '{"db": {"host": "localhost", "database": "authorize-jwt"}}'
 
     steps:
       - name: Get CouchDB
@@ -54,8 +54,6 @@ jobs:
 
       - name: Apply migrations
         run: npm explore pub-keystore -- npx node-pg-migrate up
-        env:
-          NODE_CONFIG: '{"db": {"database": "authorize-jwt"}}' 
 
       - name: Coverage
         run: npx grunt coverage
