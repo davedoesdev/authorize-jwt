@@ -120,7 +120,7 @@ grunt test
 grunt coverage
 ```
 
-[Istanbul](http://gotwarlost.github.io/istanbul/) results are available [here](http://rawgit.davedoesdev.com/davedoesdev/authorize-jwt/master/coverage/lcov-report/index.html).
+[c8](https://github.com/bcoe/c8) results are available [here](http://rawgit.davedoesdev.com/davedoesdev/authorize-jwt/master/coverage/lcov-report/index.html).
 
 Coveralls page is [here](https://coveralls.io/r/davedoesdev/authorize-jwt).
 
