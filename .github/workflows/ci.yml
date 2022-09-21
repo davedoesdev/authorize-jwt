@@ -2,6 +2,9 @@ name: ci
 
 on: [push, pull_request]
 
+env:
+  CI: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
