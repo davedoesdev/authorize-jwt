@@ -8,7 +8,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [16]
+        node-version: [16, 18]
 
     services:
       postgres:
@@ -45,6 +45,9 @@ jobs:
 
       - name: Install packages
         run: npm install
+
+      - name: Make temp directory
+        run: mkdir -p ~/tmp
 
       - name: Lint
         run: npx grunt lint
