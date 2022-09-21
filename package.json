@@ -35,7 +35,7 @@
     "basic-auth": "^2.0.1",
     "jose": "^4.9.3",
     "pub-keystore": "^5.0.6",
-    "webauthn4js": "^1.0.4"
+    "webauthn4js": "^1.0.5"
   },
   "devDependencies": {
     "@wdio/cli": "^7.24.1",
