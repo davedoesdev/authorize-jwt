@@ -58,6 +58,9 @@ jobs:
       - name: Apply migrations
         run: npm explore pub-keystore -- npx node-pg-migrate up
 
+      - name: Check Firefox
+        run: which firefox
+
       - name: Coverage
         uses: GabrielBB/xvfb-action@v1
         with:
