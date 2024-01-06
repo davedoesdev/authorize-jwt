@@ -8,7 +8,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [16, 18]
+        node-version: [16, 18, 20]
 
     services:
       postgres:
@@ -30,6 +30,12 @@ jobs:
       NODE_CONFIG: '{"db": {"host": "localhost", "database": "authorize-jwt"}}'
 
     steps:
+      - name: Update APT
+        run: sudo apt update
+
+      - name: Install dependencies
+        run: sudo apt install libmozjs-91-0
+
       - name: Get CouchDB
         run: |
           ( cd; git clone "https://github.com/davedoesdev/build-couchdb-gha.git"; cd build-couchdb-gha; wget -O - "https://github.com/davedoesdev/build-couchdb-gha/releases/download/$(git tag | tail -n 1)/couchdb.tar.gz" | tar -zx; mkdir "$HOME/couchdb"; ln -s "$PWD/couchdb" "$HOME/couchdb/rel" )
