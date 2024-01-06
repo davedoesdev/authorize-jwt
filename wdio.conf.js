@@ -1,25 +1,5 @@
 /* eslint-env node */
 
-// Make @wdio/static-server-service use HTTPS
-const fs = require('fs');
-const https = require('https');
-const { launcher: StaticServerService } = require('@wdio/static-server-service');
-class SecureStaticServerService extends StaticServerService {
-    set _server(v) {
-        v.listen = function (port, cb) {
-            const key = fs.readFileSync('./test/keys/server.key');
-            const cert = fs.readFileSync('./test/keys/server.crt');
-            const server = https.createServer({ key, cert }, this);
-            server.listen(port, cb);
-        };
-        this.__server = v;
-    }
-
-    get _server() {
-        return this.__server;
-    }
-}
-
 exports.config = {
     //
     // ====================
@@ -74,7 +54,7 @@ exports.config = {
         // 5 instances get started at a time.
         maxInstances: 5,
         //
-        browserName: 'firefox',
+        browserName: 'chrome',
         // If outputDir is provided WebdriverIO can capture driver session logs
         // it is possible to configure which logTypes to include/exclude.
         // excludeDriverLogs: ['*'], // pass '*' to exclude all driver session logs
@@ -129,15 +109,10 @@ exports.config = {
     // your test setup with almost no effort. Unlike plugins, they don't add new
     // commands. Instead, they hook themselves up into the test process.
     services: [
-        'selenium-standalone',
-        [SecureStaticServerService, {
+        [__dirname + '/test/secure-static-server-service.mjs', {
             folders: [
                 { mount: '/', path: './test/fixtures' }
             ]
-        }],
-        ['firefox-profile', {
-            'security.webauth.webauthn_enable_softtoken': process.env.CI === 'true',
-            'security.webauth.webauthn_enable_usbtoken': process.env.CI !== 'true'
         }]
     ],
 

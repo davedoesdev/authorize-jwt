@@ -18,6 +18,13 @@ module.exports = function (grunt)
 
         eslint: {
             target: [ '*.js', 'test/**/*.js' ],
+            options: {
+                overrideConfig: {
+                    parserOptions: {
+                        ecmaVersion: 2020
+                    }
+                }
+            }
         },
 
         apidox: {

@@ -1,4 +1,3 @@
-const { expect } = require('chai');
 const { promisify } = require('util');
 const path = require('path');
 const fs = require('fs');
@@ -31,7 +30,9 @@ async function executeAsync(f, ...args)
         {
             let done = args[args.length - 1];
             window.bufferDecode = function (value) {
-                return Uint8Array.from(atob(value), c => c.charCodeAt(0));
+                return Uint8Array.from(atob(value
+                    .replace(/-/g, "+")
+                    .replace(/_/g, "/")), c => c.charCodeAt(0));
             }
             window.b64url = function (s) {
                 return btoa(s)
@@ -54,12 +55,20 @@ async function executeAsync(f, ...args)
     }, f.toString(), ...args);
 }
 
+before(async function ()
+{
+    // add virtual authenticator
+    await browser.addVirtualAuthenticator('ctap2_1', 'usb');
+});
+
 function test(separate)
 {
 describe(`WebAuthn (separate=${separate})`, function ()
 {
     it('should authorize', async function ()
     {
+        const { expect } = await import('chai');
+
         this.timeout(5 * 60 * 1000);
         browser.setTimeout({ 'script': 5 * 60 * 1000 });
 
@@ -74,7 +83,7 @@ describe(`WebAuthn (separate=${separate})`, function ()
         const webauthn_options = {
             RPDisplayName: 'AuthorizeJWT',
             RPID: 'localhost',
-            RPOrigin: origin
+            RPOrigins: [origin]
         };
         let authz;
         if (separate) {
@@ -97,7 +106,6 @@ describe(`WebAuthn (separate=${separate})`, function ()
             id: 'test',
             name: 'test',
             displayName: 'Test',
-            iconURL: '',
             credentials: []
         };
 
@@ -306,7 +314,7 @@ describe(`WebAuthn (separate=${separate})`, function ()
 
             if (options.modify_client_data)
             {
-                car.response.clientDataJSON = 'YQ' + car.response.clientDataJSON;
+                car.response.clientDataJSON = 'YWJj' + car.response.clientDataJSON;
             }
 
             const orig_complete_webauthn_token = authz._config.complete_webauthn_token;
@@ -428,7 +436,7 @@ describe(`WebAuthn (separate=${separate})`, function ()
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('Error validating the assertion signature: Signature invalid or not provided\n');
+            expect(ex.message).to.equal('Error validating the assertion signature: Signature invalid or not provided');
         }
 
         try
@@ -448,7 +456,7 @@ describe(`WebAuthn (separate=${separate})`, function ()
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('Unexpected token a in JSON at position 0');
+            expect(ex.message).to.equal(String.raw`Unexpected token 'a', "abc{"type""... is not valid JSON`);
         }
 
         try
@@ -560,7 +568,7 @@ describe(`WebAuthn (separate=${separate})`, function ()
         }
         catch (ex)
         {
-            expect(ex.message).to.equal('Configuration error: Missing RPDisplayName');
+            expect(ex.message).to.equal("error occurred validating the configuration: the field 'RPDisplayName' must be configured but it is empty");
         }
     });
 });

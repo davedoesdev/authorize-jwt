@@ -19,13 +19,17 @@ var http = require('http'),
         UnsecuredJWT,
         importPKCS8
     } = require('jose'),
-    expect = require('chai').expect,
+    expect,
     authorize_jwt = require('..'),
     config = require('config'),
     uri1 = 'mailto:dave@davedoesdev.com',
     uri2 = 'http://www.davedoesdev.com',
     audience = 'urn:authorize-jwt:test',
     db_filename = path.join(__dirname, 'authorize-jwt.sqlite3');
+
+before(async function () {
+    ({ expect } = await import('chai'));
+});
 
 process.on('unhandledRejection', err => { throw err });
 
