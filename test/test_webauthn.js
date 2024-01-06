@@ -456,7 +456,10 @@ describe(`WebAuthn (separate=${separate})`, function ()
         }
         catch (ex)
         {
-            expect(ex.message).to.equal(String.raw`Unexpected token 'a', "abc{"type""... is not valid JSON`);
+            expect(ex.message).to.be.oneOf([
+                'Unexpected token a in JSON at position 0',
+                String.raw`Unexpected token 'a', "abc{"type""... is not valid JSON`
+            ]);
         }
 
         try
