@@ -49,7 +49,7 @@ async function executeAsync(f, ...args)
             }
             catch (ex)
             {
-                done({ error: ex.message }); 
+                done({ error: ex.message + ex.stack }); 
             }
         })();
     }, f.toString(), ...args);
@@ -278,7 +278,7 @@ describe(`WebAuthn (separate=${separate})`, function ()
                         userHandle: bufferEncode(userHandle)
                     }
                 };
-            }, options, credential.ID);
+            }, options, credential.id);
 
             if (car.error) { throw new Error(car.error); }
 
